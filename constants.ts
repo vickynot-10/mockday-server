@@ -1,1 +1,1 @@
-export const MAXIMUM_RESUME_UPLOADS = 3
+export const MAXIMUM_RESUME_UPLOADS = 6

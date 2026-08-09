@@ -113,14 +113,8 @@ export default async function uploadPlugin(app: FastifyInstance) {
 
         const user_obj_id = new ObjectId(userId);
 
-        console.log(deleted_file_keys, "romm");
-
         if (deleted_file_keys && deleted_file_keys.length > 0) {
-          try {
-            await deleteFilesFromS3(deleted_file_keys);
-          } catch (err) {
-            console.error("S3 delete failed:", err);
-          }
+          await deleteFilesFromS3(deleted_file_keys);
         }
         if (!files || files.length === 0) {
           return send_error(reply, "No files to upload", 400);
@@ -146,6 +140,7 @@ export default async function uploadPlugin(app: FastifyInstance) {
           filename: f.filename,
           fk_user_id: user_obj_id,
           created_at: new Date(),
+          updated_on: new Date(),
         }));
 
         const insert_doc = await db.collection("resumes").insertMany(docs);
