@@ -7,8 +7,11 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { deleteFilesFromS3, s3 } from "../service/bucketClient";
 import {
   getCachedResumes,
+  getCachedResumeUrl,
   invalidateResumeCache,
+  invalidateResumeUrlCacheBulk,
   setCachedResumes,
+  setCachedResumeUrl,
 } from "../cache/resume.cache";
 
 export async function GetResumes(req: FastifyRequest, reply: FastifyReply) {
@@ -81,6 +84,11 @@ export async function GetResumeDownloadUrl(
       return send_error(reply, "Invalid resume id", 400);
     }
 
+    const cached = await getCachedResumeUrl(user_id, id, mode ?? "download");
+    if (cached) {
+      return send_success(reply, cached, 200);
+    }
+
     const db = get_db();
 
     const resume = await db.collection("resumes").findOne({
@@ -105,7 +113,11 @@ export async function GetResumeDownloadUrl(
 
     const url = await getSignedUrl(s3, command, { expiresIn: 300 });
 
-    return send_success(reply, { download_url: url }, 200);
+    const payload = { download_url: url };
+
+    await setCachedResumeUrl(user_id, id, mode ?? "download", payload);
+
+    return send_success(reply, payload, 200);
   } catch (err) {
     return send_error(reply, "Internal Server Error", 500);
   }
@@ -138,7 +150,7 @@ export async function MarkasDefault(req: FastifyRequest, reply: FastifyReply) {
           { $set: { default: true, updated_on: new Date() } },
         ),
 
-      await invalidateResumeCache(user_id),
+      invalidateResumeCache(user_id),
     ]);
 
     return send_success(reply, {}, 200, "Default resume updated");
@@ -161,10 +173,15 @@ export async function DeleteResumes(req: FastifyRequest, reply: FastifyReply) {
       return send_error(reply, "Invalid Resumes ", 400);
     }
 
-    const filter_ids = ids
-      .filter((id) => ObjectId.isValid(id))
-      .map((id) => new ObjectId(id));
+    const deleted_ids: string[] = [];
+    const filter_ids: ObjectId[] = [];
 
+    for (const id of ids) {
+      if (!id || !ObjectId.isValid(id)) continue;
+      const oid = new ObjectId(id);
+      filter_ids.push(oid);
+      deleted_ids.push(oid.toString());
+    }
     if (filter_ids.length <= 0) {
       return send_error(reply, "Invalid Resumes ", 400);
     }
@@ -203,7 +220,10 @@ export async function DeleteResumes(req: FastifyRequest, reply: FastifyReply) {
       return send_error(reply, "Nothing deleted", 404);
     }
 
-    await invalidateResumeCache(user_id);
+    await Promise.all([
+      invalidateResumeCache(user_id),
+      invalidateResumeUrlCacheBulk(user_id, deleted_ids),
+    ]);
 
     return send_success(reply, {}, 200, "Deleted Successfully !");
   } catch (err) {
