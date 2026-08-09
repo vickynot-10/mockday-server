@@ -4,8 +4,12 @@ import { FastifyReply, FastifyRequest } from "fastify";
 import { ObjectId } from "mongodb";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { s3 } from "../service/bucketClient";
-import { getCachedResumes, setCachedResumes } from "../cache/resume.cache";
+import { deleteFilesFromS3, s3 } from "../service/bucketClient";
+import {
+  getCachedResumes,
+  invalidateResumeCache,
+  setCachedResumes,
+} from "../cache/resume.cache";
 
 export async function GetResumes(req: FastifyRequest, reply: FastifyReply) {
   try {
@@ -135,6 +139,70 @@ export async function MarkasDefault(req: FastifyRequest, reply: FastifyReply) {
       );
 
     return send_success(reply, {}, 200, "Default resume updated");
+  } catch (err) {
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
+
+export async function DeleteResumes(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const { user_id } = req.user;
+
+    if (!user_id || !ObjectId.isValid(user_id)) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const { ids } = req.body as { ids: string[] };
+
+    if (!ids || ids.length <= 0) {
+      return send_error(reply, "Invalid Resumes ", 400);
+    }
+
+    const filter_ids = ids
+      .filter((id) => ObjectId.isValid(id))
+      .map((id) => new ObjectId(id));
+
+    if (filter_ids.length <= 0) {
+      return send_error(reply, "Invalid Resumes ", 400);
+    }
+
+    const db = get_db();
+
+    const resume = await db
+      .collection("resumes")
+      .find(
+        {
+          _id: { $in: filter_ids },
+          fk_user_id: new ObjectId(user_id),
+        },
+        {
+          projection: {
+            key: 1,
+          },
+        },
+      )
+      .toArray();
+
+    if (!resume) {
+      return send_error(reply, "Resume not found", 404);
+    }
+
+    const keys_map = resume.map((item) => item.key);
+    const [, delete_result] = await Promise.all([
+      deleteFilesFromS3(keys_map),
+      db.collection("resumes").deleteMany({
+        _id: { $in: filter_ids },
+        fk_user_id: new ObjectId(user_id),
+      }),
+    ]);
+
+    if (delete_result.deletedCount === 0) {
+      return send_error(reply, "Nothing deleted", 404);
+    }
+
+    await invalidateResumeCache(user_id);
+
+    return send_success(reply, {}, 200, "Deleted Successfully !");
   } catch (err) {
     return send_error(reply, "Internal Server Error", 500);
   }
