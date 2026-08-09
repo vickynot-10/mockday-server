@@ -127,16 +127,19 @@ export async function MarkasDefault(req: FastifyRequest, reply: FastifyReply) {
     const db = get_db();
     const user_id_obj = new ObjectId(user_id);
 
-    await db
-      .collection("resumes")
-      .updateMany({ fk_user_id: user_id_obj }, { $set: { default: false } });
+    await Promise.all([
+      db
+        .collection("resumes")
+        .updateMany({ fk_user_id: user_id_obj }, { $set: { default: false } }),
+      db
+        .collection("resumes")
+        .updateOne(
+          { _id: new ObjectId(id), fk_user_id: user_id_obj },
+          { $set: { default: true, updated_on: new Date() } },
+        ),
 
-    await db
-      .collection("resumes")
-      .updateOne(
-        { _id: new ObjectId(id), fk_user_id: user_id_obj },
-        { $set: { default: true, updated_on: new Date() } },
-      );
+      await invalidateResumeCache(user_id),
+    ]);
 
     return send_success(reply, {}, 200, "Default resume updated");
   } catch (err) {
