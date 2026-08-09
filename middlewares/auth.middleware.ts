@@ -7,7 +7,6 @@ interface AuthUser extends JwtPayload {
   user_id: string;
   email: string;
   name: string;
-  fk_org_id: string;
 }
 
 declare module "fastify" {
@@ -20,7 +19,8 @@ export async function authMiddleware(
   request: FastifyRequest,
   reply: FastifyReply,
 ) {
-  const token = request.cookies.pulsewatch;
+  const token = request.cookies.mockday;
+
   if (!token) {
     return send_error(reply, "Not Logged In , Try Login Again !", 401);
   }
@@ -31,13 +31,7 @@ export async function authMiddleware(
       process.env.JWT_SECRET_KEY as string,
     ) as AuthUser;
 
-    if (
-      !decoded ||
-      !decoded.user_id ||
-      !ObjectId.isValid(decoded.user_id) ||
-      !decoded.fk_org_id ||
-      !ObjectId.isValid(decoded.fk_org_id)
-    ) {
+    if (!decoded || !decoded.user_id || !ObjectId.isValid(decoded.user_id)) {
       return send_error(reply, "Not Logged In , Try Login Again !", 401);
     }
 

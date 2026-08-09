@@ -6,7 +6,7 @@ import { FastifyReply, FastifyRequest } from "fastify";
 import { generateToken } from "../libs/jwt";
 
 const SetCookie = (reply: FastifyReply, token: string) => {
-  reply.setCookie("pulsewatch", token, {
+  reply.setCookie("mockday", token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -105,7 +105,7 @@ export async function SignIn(req: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function SignOut(req: FastifyRequest, reply: FastifyReply) {
-  reply.clearCookie("pulsewatch", {
+  reply.clearCookie("mockday", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
