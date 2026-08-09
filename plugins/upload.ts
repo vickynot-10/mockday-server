@@ -8,6 +8,7 @@ import { get_db } from "../config/mongodb";
 import { ObjectId } from "mongodb";
 import { send_error, send_success } from "../utils/response";
 import { MAXIMUM_RESUME_UPLOADS } from "../constants";
+import { deleteFilesFromS3 } from "../service/bucketClient";
 
 const BUCKET = process.env.B2_BUCKET_NAME!;
 
@@ -21,6 +22,7 @@ interface ConfirmUploadRequest {
     file_id: string;
     key: string;
   }[];
+  deleted_file_keys: string[];
 }
 
 export default async function uploadPlugin(app: FastifyInstance) {
@@ -107,13 +109,22 @@ export default async function uploadPlugin(app: FastifyInstance) {
           return send_error(reply, "Try logging in again", 401);
         }
 
-        const { files } = req.body;
-
-        if (!files || files.length === 0) {
-          return send_error(reply, "No files to confirm", 400);
-        }
+        const { files, deleted_file_keys } = req.body;
 
         const user_obj_id = new ObjectId(userId);
+
+        console.log(deleted_file_keys, "romm");
+
+        if (deleted_file_keys && deleted_file_keys.length > 0) {
+          try {
+            await deleteFilesFromS3(deleted_file_keys);
+          } catch (err) {
+            console.error("S3 delete failed:", err);
+          }
+        }
+        if (!files || files.length === 0) {
+          return send_error(reply, "No files to upload", 400);
+        }
         const db = get_db();
 
         const existingCount = await db.collection("resumes").countDocuments({
