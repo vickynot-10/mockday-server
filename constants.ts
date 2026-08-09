@@ -1,0 +1,1 @@
+export const MAXIMUM_RESUME_UPLOADS = 3
