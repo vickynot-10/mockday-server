@@ -2,6 +2,7 @@ import { get_db } from "../config/mongodb";
 import { send_success, send_error } from "../utils/response";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { ObjectId } from "mongodb";
+import { getCachedAutoFill, setCachedAutoFill } from "../cache/autofill.cache";
 export async function GetAutoFills(req: FastifyRequest, reply: FastifyReply) {
   try {
     const { user_id } = req.user;
@@ -9,14 +10,24 @@ export async function GetAutoFills(req: FastifyRequest, reply: FastifyReply) {
     if (!user_id || !ObjectId.isValid(user_id)) {
       return send_error(reply, "Unauthorized", 401);
     }
+
+    const cached = await getCachedAutoFill(user_id);
+    if (cached) {
+      return send_success(reply, cached, 200);
+    }
+
     const db = get_db();
 
     const data = await db
       .collection("autofills")
       .findOne(
         { fk_user_id: new ObjectId(user_id) },
-        { projection: { fk_user_id: 0  } },
+        { projection: { fk_user_id: 0 } },
       );
+
+    if (data) {
+      await setCachedAutoFill(user_id, data);
+    }
 
     return send_success(reply, data, 200);
   } catch (err) {
@@ -42,19 +53,24 @@ export async function SaveAutoFill(req: FastifyRequest, reply: FastifyReply) {
     const now = new Date();
     const user_obj_id = new ObjectId(user_id);
 
+    const newDoc = {
+      ...data,
+      fk_user_id: user_obj_id,
+      updated_on: now,
+    };
+
     const result = await db.collection("autofills").replaceOne(
       { fk_user_id: user_obj_id },
-      {
-        ...data,
-        fk_user_id: user_obj_id,
-        updated_on: now,
-      },
+      newDoc,
       { upsert: true },
     );
 
     if (!result || !result.acknowledged) {
       return send_error(reply, "Internal Server Error", 500);
     }
+
+    const { fk_user_id, ...cacheable } = newDoc;
+    await setCachedAutoFill(user_id, cacheable);
 
     return send_success(reply, {}, 200, "AutoFill Saved Successfully!");
   } catch (err) {
