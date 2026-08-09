@@ -5,6 +5,7 @@ import { ObjectId } from "mongodb";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { s3 } from "../service/bucketClient";
+import { getCachedResumes, setCachedResumes } from "../cache/resume.cache";
 
 export async function GetResumes(req: FastifyRequest, reply: FastifyReply) {
   try {
@@ -15,25 +16,45 @@ export async function GetResumes(req: FastifyRequest, reply: FastifyReply) {
       return send_error(reply, "Unauthorized", 401);
     }
 
+    const cached = await getCachedResumes(user_id);
+    if (cached) {
+      return send_success(reply, cached, 200);
+    }
+
     const get_resumes = await db
       .collection("resumes")
       .find(
-        {
-          fk_user_id: new ObjectId(user_id),
-        },
-        {
-          projection: {
-            filename: 1,
-            created_at: 1,
-            default: 1,
-            updated_on: 1,
-          },
-        },
+        { fk_user_id: new ObjectId(user_id) },
+        { projection: { filename: 1, created_at: 1, default: 1, key: 1 } },
       )
-      .sort({ updated_on: -1 })
+      .sort({ created_at: -1 })
       .toArray();
 
-    return send_success(reply, get_resumes, 200);
+    const resumes_with_preview = await Promise.all(
+      get_resumes.map(async (resume) => {
+        const command = new GetObjectCommand({
+          Bucket: process.env.B2_BUCKET_NAME!,
+          Key: resume.key,
+          ResponseContentDisposition: `inline; filename="${resume.filename}"`,
+        });
+
+        const preview_url = await getSignedUrl(s3, command, {
+          expiresIn: 3600,
+        });
+
+        return {
+          _id: resume._id,
+          filename: resume.filename,
+          created_at: resume.created_at,
+          default: resume.default,
+          preview_url,
+        };
+      }),
+    );
+
+    await setCachedResumes(user_id, resumes_with_preview);
+
+    return send_success(reply, resumes_with_preview, 200);
   } catch (err) {
     return send_error(reply, "Internal Server Error", 500);
   }

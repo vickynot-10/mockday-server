@@ -26,7 +26,7 @@ export async function ConnectRedis() {
   }
 }
 
-export const get_redis = () => {
+export const redis = () => {
   if (!connection) {
     throw new Error("Redis not connected yet");
   }
