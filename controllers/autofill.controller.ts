@@ -15,7 +15,7 @@ export async function GetAutoFills(req: FastifyRequest, reply: FastifyReply) {
       .collection("autofills")
       .findOne(
         { fk_user_id: new ObjectId(user_id) },
-        { projection: { fk_user_id: 0 } },
+        { projection: { fk_user_id: 0  } },
       );
 
     return send_success(reply, data, 200);
@@ -41,26 +41,18 @@ export async function SaveAutoFill(req: FastifyRequest, reply: FastifyReply) {
     const db = get_db();
     const now = new Date();
     const user_obj_id = new ObjectId(user_id);
-    const insert = await db.collection("autofills").updateOne(
+
+    const result = await db.collection("autofills").replaceOne(
+      { fk_user_id: user_obj_id },
       {
+        ...data,
         fk_user_id: user_obj_id,
+        updated_on: now,
       },
-      {
-        $set: {
-          ...data,
-          updated_on: now,
-        },
-        $setOnInsert: {
-          fk_user_id: user_obj_id,
-          created_on: now,
-        },
-      },
-      {
-        upsert: true,
-      },
+      { upsert: true },
     );
 
-    if (!insert || !insert.acknowledged) {
+    if (!result || !result.acknowledged) {
       return send_error(reply, "Internal Server Error", 500);
     }
 
