@@ -7,5 +7,6 @@ export async function setIndexes() {
   await Promise.all([
     db.collection("users").createIndex({ email: 1 }),
     db.collection("resumes").createIndex({ fk_user_id: 1 }),
+    db.collection("autofills").createIndex({ fk_user_id: 1 }),
   ]);
 }
