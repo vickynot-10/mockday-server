@@ -18,11 +18,14 @@ const app = Fastify({
 });
 
 app.register(cors, {
-  origin: process.env.UI_APP || "http://localhost:3000",
+  origin: [
+    process.env.UI_APP || "http://localhost:3000",
+    `chrome-extension://${process.env.EXTENSION_ID}`,
+  ],
   credentials: true,
+
   methods: ["GET", "POST", "PATCH", "DELETE"],
 });
-
 
 app.register(RegisterRoutes, {
   prefix: "/api",

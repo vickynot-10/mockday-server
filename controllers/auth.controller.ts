@@ -114,3 +114,5 @@ export async function SignOut(req: FastifyRequest, reply: FastifyReply) {
 
   return send_success(reply, {}, 200, "Logged out successfully");
 }
+
+
