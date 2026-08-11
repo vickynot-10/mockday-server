@@ -3,6 +3,7 @@ import { send_success, send_error } from "../utils/response";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { ObjectId } from "mongodb";
 import { getCachedAutoFill, setCachedAutoFill } from "../cache/autofill.cache";
+import { invalidateExtensionCache } from "../cache/extension_app.cache";
 export async function GetAutoFills(req: FastifyRequest, reply: FastifyReply) {
   try {
     const { user_id } = req.user;
@@ -59,18 +60,19 @@ export async function SaveAutoFill(req: FastifyRequest, reply: FastifyReply) {
       updated_on: now,
     };
 
-    const result = await db.collection("autofills").replaceOne(
-      { fk_user_id: user_obj_id },
-      newDoc,
-      { upsert: true },
-    );
+    const result = await db
+      .collection("autofills")
+      .replaceOne({ fk_user_id: user_obj_id }, newDoc, { upsert: true });
 
     if (!result || !result.acknowledged) {
       return send_error(reply, "Internal Server Error", 500);
     }
 
     const { fk_user_id, ...cacheable } = newDoc;
-    await setCachedAutoFill(user_id, cacheable);
+    await Promise.all([
+      setCachedAutoFill(user_id, cacheable),
+      invalidateExtensionCache(user_id),
+    ]);
 
     return send_success(reply, {}, 200, "AutoFill Saved Successfully!");
   } catch (err) {
