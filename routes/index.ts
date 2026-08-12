@@ -8,6 +8,7 @@ import { ExtensionRoutes } from "./extension.route";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import uploadPlugin from "../plugins/upload";
 import { extensionAuthMiddleware } from "../middlewares/extension.middleware";
+import { JobTrackerRoutes } from "./job_tracker.route";
 
 export const RegisterRoutes = async (app: FastifyInstance) => {
   app.register(AuthRoutes, { prefix: "/" });
@@ -23,5 +24,6 @@ export const RegisterRoutes = async (app: FastifyInstance) => {
     instance.register(ResumeRoutes, { prefix: "/resumes" });
     instance.register(AutoFillRoutes, { prefix: "/autofill" });
     instance.register(ExtensionAuthRoutes, { prefix: "/extensions" });
+    instance.register(JobTrackerRoutes, { prefix: "/trackers" });
   });
 };

@@ -9,6 +9,7 @@ import {
   getCachedExtension,
   setCachedExtension,
 } from "../cache/extension_app.cache";
+import { JobTrackerSchema } from "../schema/extension.schema";
 const BUCKET = process.env.B2_BUCKET_NAME!;
 
 export async function GetAutoFillFields(
@@ -76,6 +77,56 @@ export async function GetAutoFillFields(
     setCachedExtension(user_id, payload);
 
     return send_success(reply, payload, 200, "Data are fetched ");
+  } catch (err) {
+    return send_error(reply, "Something went wrong", 500);
+  }
+}
+
+export async function SaveJobTrackerFromExt(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const user = req.ext_user;
+
+    if (!user) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const user_id = user.fk_user_id;
+
+    const user_obj_id = new ObjectId(user_id);
+
+    const validate = JobTrackerSchema.safeParse(req.body);
+
+    if (!validate.success) {
+      return send_error(reply, validate.error.issues[0].message);
+    }
+
+    const { url, pageTitle, h1, ogDescription, ogSiteName, ogTitle } =
+      validate.data;
+
+    const db = get_db();
+
+    const payload = {
+      url,
+      page_title: pageTitle,
+      h1,
+      description: ogDescription,
+      site_name: ogSiteName,
+      title: ogTitle,
+      applied_on: new Date(),
+      fk_user_id: user_obj_id,
+      status: "applied",
+    };
+
+    const insert = await db.collection("trackers").insertOne(payload);
+
+    if (!insert || !insert.acknowledged) {
+      return send_error(reply, "Internal Server Error", 500);
+    }
+
+    return send_success(reply, {}, 200, "Tracker Saved Successfully !");
   } catch (err) {
     return send_error(reply, "Something went wrong", 500);
   }
