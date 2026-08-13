@@ -4,6 +4,7 @@ import { ResumeRoutes } from "./resume.routes";
 import { AutoFillRoutes } from "./autofill.routes";
 import { ExtensionAuthRoutes } from "./extension_auth.route";
 import { ExtensionRoutes } from "./extension.route";
+import { StatusRoutes } from "./status.route";
 
 import { authMiddleware } from "../middlewares/auth.middleware";
 import uploadPlugin from "../plugins/upload";
@@ -25,5 +26,6 @@ export const RegisterRoutes = async (app: FastifyInstance) => {
     instance.register(AutoFillRoutes, { prefix: "/autofill" });
     instance.register(ExtensionAuthRoutes, { prefix: "/extensions" });
     instance.register(JobTrackerRoutes, { prefix: "/trackers" });
+    instance.register(StatusRoutes, { prefix: "/status" });
   });
 };

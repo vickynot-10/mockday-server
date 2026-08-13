@@ -3,7 +3,7 @@ import { send_success, send_error, send_info } from "../utils/response";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { ObjectId } from "mongodb";
 import { StatusSchema } from "../schema/status.schema";
-export async function GetAutoFills(req: FastifyRequest, reply: FastifyReply) {
+export async function GetStatus(req: FastifyRequest, reply: FastifyReply) {
   try {
     const { user_id } = req.user;
 
@@ -80,10 +80,51 @@ export async function SaveStatus(req: FastifyRequest, reply: FastifyReply) {
     };
 
     const result = await db.collection("status").insertOne(doc);
-  if (!result || !result.acknowledged) {
-        return send_error(reply, "Internal Server Error ", 500);
-      }
+    if (!result || !result.acknowledged) {
+      return send_error(reply, "Internal Server Error ", 500);
+    }
     return send_success(reply, {}, 200, "Status Updated Successfully !");
+  } catch (err) {
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
+
+export async function DeleteStatus(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const { user_id } = req.user;
+
+    if (!user_id || !ObjectId.isValid(user_id)) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+
+    const  ids  = req.body as string[]
+
+    if (!ids || ids.length <= 0) {
+      return send_error(reply, "Invalid Payload ", 400);
+    }
+
+    const filter_ids: ObjectId[] = ids.filter(id => ObjectId.isValid(id)).map(id => new ObjectId(id))
+
+    
+    if (filter_ids.length <= 0) {
+      return send_error(reply, "Invalid Payload ", 400);
+    }
+
+    const db = get_db();
+
+    const delete_result = await db.collection("status").deleteMany({
+      _id : {$in : filter_ids},
+      fk_user_id : new ObjectId(user_id)
+    })
+
+    
+    if (delete_result.deletedCount === 0) {
+      return send_error(reply, "Nothing deleted", 404);
+    }
+
+
+    return send_success(reply, {}, 200, "Deleted Successfully !");
   } catch (err) {
     return send_error(reply, "Internal Server Error", 500);
   }
