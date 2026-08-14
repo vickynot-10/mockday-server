@@ -10,6 +10,11 @@ import {
   setCachedExtension,
 } from "../cache/extension_app.cache";
 import { JobTrackerSchema } from "../schema/extension.schema";
+import {
+  getDefaultStatus,
+  setCachedDefaultStatus,
+} from "../cache/status.cache";
+
 const BUCKET = process.env.B2_BUCKET_NAME!;
 
 export async function GetAutoFillFields(
@@ -103,10 +108,29 @@ export async function SaveJobTrackerFromExt(
       return send_error(reply, validate.error.issues[0].message);
     }
 
+    let default_status: ObjectId | string = "applied";
+
+    const isCache = await getDefaultStatus(user_id);
+
     const { url, pageTitle, h1, ogDescription, ogSiteName, ogTitle } =
       validate.data;
 
     const db = get_db();
+
+    if (isCache) {
+      default_status = isCache;
+    } else {
+      const get_status = await db
+        .collection("status")
+        .findOne(
+          { default: true, fk_user_id: user_obj_id },
+          { projection: { _id: 1 } },
+        );
+      if (get_status) {
+        default_status = get_status._id;
+        await setCachedDefaultStatus(user_id, get_status._id.toString());
+      }
+    }
 
     const payload = {
       url,
@@ -117,7 +141,7 @@ export async function SaveJobTrackerFromExt(
       title: ogTitle,
       applied_on: new Date(),
       fk_user_id: user_obj_id,
-      status: "applied",
+      status: default_status,
     };
 
     const insert = await db.collection("trackers").insertOne(payload);

@@ -3,6 +3,8 @@ import { send_success, send_error, send_info } from "../utils/response";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { ObjectId } from "mongodb";
 import { StatusSchema } from "../schema/status.schema";
+import { invalidateResumeCache, setCachedDefaultStatus } from "../cache/status.cache";
+
 export async function GetStatus(req: FastifyRequest, reply: FastifyReply) {
   try {
     const { search } = req.query as any;
@@ -122,10 +124,14 @@ export async function DeleteStatus(req: FastifyRequest, reply: FastifyReply) {
 
     const db = get_db();
 
-    const delete_result = await db.collection("status").deleteMany({
-      _id: { $in: filter_ids },
-      fk_user_id: new ObjectId(user_id),
-    });
+    const [delete_result] = await Promise.all([
+      db.collection("status").deleteMany({
+        _id: { $in: filter_ids },
+        fk_user_id: new ObjectId(user_id),
+      }),
+
+      await invalidateResumeCache(user_id),
+    ]);
 
     if (delete_result.deletedCount === 0) {
       return send_error(reply, "Nothing deleted", 404);
@@ -155,7 +161,7 @@ export async function SetDefaultStatus(
     const db = get_db();
     const obj_id = new ObjectId(id);
     const user_obj_id = new ObjectId(user_id);
-    const [update, _] = await Promise.all([
+    const [update, _, __] = await Promise.all([
       db.collection("status").updateOne(
         {
           _id: obj_id,
@@ -181,6 +187,7 @@ export async function SetDefaultStatus(
           },
         },
       ),
+      setCachedDefaultStatus(user_id , id),
     ]);
 
     if (!update || !update.acknowledged) {
