@@ -3,7 +3,10 @@ import { send_success, send_error, send_info } from "../utils/response";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { ObjectId } from "mongodb";
 import { StatusSchema } from "../schema/status.schema";
-import { invalidateResumeCache, setCachedDefaultStatus } from "../cache/status.cache";
+import {
+  invalidateResumeCache,
+  setCachedDefaultStatus,
+} from "../cache/status.cache";
 
 export async function GetStatus(req: FastifyRequest, reply: FastifyReply) {
   try {
@@ -187,7 +190,7 @@ export async function SetDefaultStatus(
           },
         },
       ),
-      setCachedDefaultStatus(user_id , id),
+      setCachedDefaultStatus(user_id, id),
     ]);
 
     if (!update || !update.acknowledged) {
@@ -199,6 +202,31 @@ export async function SetDefaultStatus(
     }
 
     return send_success(reply, {}, 200, "Updated Successfully !");
+  } catch (err) {
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
+
+export async function GetAllStatus(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const { user_id } = req.user;
+
+    if (!user_id || !ObjectId.isValid(user_id)) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const db = get_db();
+
+    const data = await db
+      .collection("status")
+      .find(
+        {
+          fk_user_id: new ObjectId(user_id),
+        },
+        { projection: { fk_user_id: 0 } },
+      )
+      .toArray();
+    return send_success(reply, data, 200);
   } catch (err) {
     return send_error(reply, "Internal Server Error", 500);
   }

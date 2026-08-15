@@ -107,13 +107,20 @@ export async function SaveJobTrackerFromExt(
     if (!validate.success) {
       return send_error(reply, validate.error.issues[0].message);
     }
-
     let default_status: ObjectId | string = "applied";
 
     const isCache = await getDefaultStatus(user_id);
 
-    const { url, pageTitle, h1, ogDescription, ogSiteName, ogTitle } =
-      validate.data;
+    const {
+      url,
+      pageTitle,
+      h1,
+      company,
+      ogDescription,
+      ogSiteName,
+      ogTitle,
+      ogImage,
+    } = validate.data;
 
     const db = get_db();
 
@@ -127,21 +134,26 @@ export async function SaveJobTrackerFromExt(
           { projection: { _id: 1 } },
         );
       if (get_status) {
-        default_status = get_status._id;
-        await setCachedDefaultStatus(user_id, get_status._id.toString());
+        const id = get_status._id.toString();
+        default_status = id;
+        await setCachedDefaultStatus(user_id, id);
       }
     }
 
     const payload = {
+      company,
       url,
       page_title: pageTitle,
       h1,
       description: ogDescription,
+      image: ogImage ?? null,
       site_name: ogSiteName,
       title: ogTitle,
       applied_on: new Date(),
       fk_user_id: user_obj_id,
-      status: default_status,
+      status: ObjectId.isValid(default_status)
+        ? new ObjectId(default_status)
+        : default_status,
     };
 
     const insert = await db.collection("trackers").insertOne(payload);

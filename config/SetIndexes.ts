@@ -8,6 +8,9 @@ export async function setIndexes() {
     db.collection("users").createIndex({ email: 1 }),
     db.collection("resumes").createIndex({ fk_user_id: 1 }),
     db.collection("autofills").createIndex({ fk_user_id: 1 }),
-    db.collection("trackers").createIndex({ fk_user_id: 1 }),
+    db.collection("trackers").createIndex({
+      fk_user_id: 1,
+      applied_on: -1,
+    }),
   ]);
 }

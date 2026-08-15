@@ -7,4 +7,6 @@ export const JobTrackerSchema = z.object({
   ogSiteName: z.string().optional(),
   ogDescription: z.string().optional(),
   h1: z.string().optional(),
+  company: z.string().optional(),
+  ogImage : z.string().optional(),
 });
