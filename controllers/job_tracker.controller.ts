@@ -2,7 +2,11 @@ import { send_success, send_error, send_info } from "../utils/response";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { ObjectId } from "mongodb";
 import { get_db } from "../config/mongodb";
-import { JobUpdateStatusSchema } from "../schema/job_tracker.schema";
+import {
+  JobUpdateStatusSchema,
+  TrackerSaveSchema,
+} from "../schema/job_tracker.schema";
+
 export async function GetTrackers(req: FastifyRequest, reply: FastifyReply) {
   try {
     const db = get_db();
@@ -88,7 +92,7 @@ export async function GetTrackers(req: FastifyRequest, reply: FastifyReply) {
               applied_on: 1,
               title: 1,
               site_name: 1,
-              url :1
+              url: 1,
             },
           },
           {
@@ -115,6 +119,112 @@ export async function GetTrackers(req: FastifyRequest, reply: FastifyReply) {
         total,
       },
       200,
+    );
+  } catch (err) {
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
+
+export async function GetTrackerbyID(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const db = get_db();
+    const { user_id } = req.user;
+
+    if (!user_id || !ObjectId.isValid(user_id)) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const { id } = req.query as {
+      id: string;
+    };
+
+    if (!id || !ObjectId.isValid(id)) {
+      return send_error(reply, "Job List not found", 404);
+    }
+
+    const doc = await db.collection("trackers").findOne(
+      {
+        fk_user_id: new ObjectId(user_id),
+        _id: new ObjectId(id),
+      },
+      {
+        projection: {
+          fk_user_id: 0,
+          updated_on: 0,
+          applied_on: 0,
+          image: 0,
+          status: 0,
+        },
+      },
+    );
+
+    return send_success(reply, doc, 200);
+  } catch (err) {
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
+
+export async function SaveTracker(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const db = get_db();
+    const { user_id } = req.user;
+
+    if (!user_id || !ObjectId.isValid(user_id)) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const body = req.body;
+
+    const validate = TrackerSaveSchema.safeParse(body);
+
+    if (!validate.success) {
+      const msg = validate.error.issues[0].message ?? "Invalid Data";
+      return send_error(reply, msg);
+    }
+
+    const { _id, ...data } = validate.data;
+
+    if (_id && ObjectId.isValid(_id)) {
+      const update = await db.collection("trackers").updateOne(
+        {
+          fk_user_id: new ObjectId(user_id),
+          _id: new ObjectId(_id),
+        },
+        {
+          $set: {
+            ...data,
+            updated_on: new Date(),
+          },
+        },
+      );
+
+      if (!update || !update.acknowledged) {
+        return send_error(reply, "Internal Server Error", 500);
+      }
+
+      if (update.matchedCount <= 0) {
+        return send_error(reply, "No Job Tracker Found !", 404);
+      }
+
+      return send_success(reply, {}, 200, "Tracker Updated Successfully !");
+    }
+
+    const insert = await db.collection("trackers").insertOne({
+      ...data,
+      fk_user_id: new ObjectId(user_id),
+      applied_on: new Date(),
+      created_on: new Date(),
+    });
+
+    if (!insert || !insert.acknowledged) {
+      return send_error(reply, "Internal Server Error", 500);
+    }
+
+    return send_success(
+      reply,
+      { _id: insert.insertedId },
+      200,
+      "Tracker Created Successfully !",
     );
   } catch (err) {
     return send_error(reply, "Internal Server Error", 500);
@@ -161,20 +271,18 @@ export async function UpdateTrackerStatus(
       },
     );
 
-    if(!update || !update.acknowledged){
-      return send_error(reply , "Internal Server Error" , 500)
+    if (!update || !update.acknowledged) {
+      return send_error(reply, "Internal Server Error", 500);
     }
-    if(update.matchedCount <= 0){
-      
-      return send_error(reply , "No Job Tracker Found !" , 404)
-    }
-
-    if(update.modifiedCount <= 0){
-      
-      return send_info(reply , "Failed to Updated !")
+    if (update.matchedCount <= 0) {
+      return send_error(reply, "No Job Tracker Found !", 404);
     }
 
-    return send_success(reply, {} , 200 , "Status Updated Successfully !");
+    if (update.modifiedCount <= 0) {
+      return send_info(reply, "Failed to Updated !");
+    }
+
+    return send_success(reply, {}, 200, "Status Updated Successfully !");
   } catch (err) {
     return send_error(reply, "Internal Server Error", 500);
   }
