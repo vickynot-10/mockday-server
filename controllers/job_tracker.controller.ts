@@ -306,6 +306,63 @@ export async function SaveTracker(req: FastifyRequest, reply: FastifyReply) {
   }
 }
 
+export async function DeleteTracker(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const db = get_db();
+    const { user_id } = req.user;
+
+    if (!user_id || !ObjectId.isValid(user_id)) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const body = req.body;
+
+    if (!body || !Array.isArray(body) || body.length <= 0) {
+      return send_error(reply, "Invalid Payload !", 400);
+    }
+
+    const obj_ids = body
+      .filter((id) => ObjectId.isValid(id))
+      .map((id) => new ObjectId(id));
+    if (obj_ids.length <= 0) {
+      return send_error(reply, "Atleast 1 for delete tracker !", 400);
+    }
+
+    const fk_user_id = new ObjectId(user_id);
+
+    const getAllReminders = await db
+      .collection("reminders")
+      .find({
+        fk_user_id,
+        fk_tracker_id: { $in: obj_ids },
+      })
+      .toArray();
+
+    if (getAllReminders.length > 0) {
+      for (const reminder of getAllReminders) {
+        if (reminder?.qstash_message_id) {
+          await DeleteReminder(reminder.qstash_message_id);
+        }
+      }
+    }
+
+    await Promise.all([
+      db.collection("reminders").deleteMany({
+        fk_user_id,
+        fk_tracker_id: { $in: obj_ids },
+      }),
+      db.collection("trackers").deleteMany({
+        fk_user_id,
+        _id: { $in: obj_ids },
+      }),
+    ]);
+
+    return send_success(reply, {}, 200, "Trackers Deleted Successfully !");
+  } catch (err) {
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
+
 export async function UpdateTrackerStatus(
   req: FastifyRequest,
   reply: FastifyReply,
@@ -409,7 +466,11 @@ export async function SaveReminders(req: FastifyRequest, reply: FastifyReply) {
       await DeleteReminder(existing.qstash_message_id);
     }
 
-    const qstash_message_id = await CreateReminder(fk_tracker_id,user_id, reminder_at);
+    const qstash_message_id = await CreateReminder(
+      fk_tracker_id,
+      user_id,
+      reminder_at,
+    );
 
     const insert = await db.collection("reminders").updateOne(
       {
@@ -445,7 +506,7 @@ export async function SaveReminders(req: FastifyRequest, reply: FastifyReply) {
       "Reminders Saved Successfully !",
     );
   } catch (err) {
-    console.log(err)
+    console.log(err);
     return send_error(reply, "Internal Server Error", 500);
   }
 }
