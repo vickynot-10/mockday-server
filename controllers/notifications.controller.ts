@@ -24,11 +24,45 @@ export async function GetNotifications(
         projection: {
           email: 1,
           push: 1,
-          push_registered : 1,
-          notify_email :1
+          push_registered: 1,
+          notify_email: 1,
         },
       },
     );
+
+    return send_success(reply, doc, 200);
+  } catch (err) {
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
+
+export async function GetNotificationsList(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const { user_id } = req.user;
+
+    if (!user_id || !ObjectId.isValid(user_id)) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const db = get_db();
+    const doc = await db
+      .collection("notification-logs")
+      .find(
+        {
+          fk_user_id: new ObjectId(user_id),
+        },
+        {
+          projection: {
+            fk_tracker_id: 0,
+            fk_user_id: 0,
+            fk_reminder_id: 0,
+          },
+        },
+      )
+      .toArray();
 
     return send_success(reply, doc, 200);
   } catch (err) {
@@ -47,10 +81,10 @@ export async function SaveNotifications(
       return send_error(reply, "Unauthorized", 401);
     }
 
-    const { email, push , notify_email} = req.body as {
+    const { email, push, notify_email } = req.body as {
       email: boolean;
       push: boolean;
-      notify_email : string;
+      notify_email: string;
     };
 
     const db = get_db();

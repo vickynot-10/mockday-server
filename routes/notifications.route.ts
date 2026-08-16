@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import {
   GetNotifications,
+  GetNotificationsList,
   RegisterDevice,
   SaveNotifications,
   SendOTP,
@@ -8,6 +9,7 @@ import {
 export async function NotificationRoutes(app: FastifyInstance) {
   app.post("/", SaveNotifications);
   app.get("/", GetNotifications);
+  app.get("/all", GetNotificationsList);
   app.post("/register-device", RegisterDevice);
   app.post("/send-otp", SendOTP);
   app.post("/verify-otp", RegisterDevice);
