@@ -23,11 +23,10 @@ export async function sendNotification(email: string, note: string) {
   await transporter.sendMail({
     from: process.env.SMTP_FROM,
     to: email,
-    subject: "Your verification code",
-    html: `Testign html with noet ${note}`,
+    subject: "You have a new notification",
+    html: getTemplates(2, { note }),
   });
 }
-
 function getTemplates(type: number, details: any) {
   if (type === 1) {
     const { otp } = details;
@@ -74,6 +73,52 @@ function getTemplates(type: number, details: any) {
 
     <p style="margin:0 0 4px;font-size:12px;color:#a8afbe;line-height:1.6;">
       Didn't request this? You can safely ignore this email.
+    </p>
+    <p style="margin:0;font-size:12px;color:#c4c8d1;">
+      &copy; ${new Date().getFullYear()} MockDay
+    </p>
+
+  </div>
+
+</body>
+</html>`;
+  }
+  if (type === 2) {
+    const { note } = details;
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>New Notification</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+</head>
+<body style="margin:0;padding:0;font-family:'Poppins',sans-serif;background:#ffffff;font-size:14px;color:#2c3040;">
+
+  <div style="max-width:480px;margin:0 auto;padding:48px 32px 40px;">
+
+    <div style="height:4px;width:48px;background:#3D66DF;border-radius:4px;margin-bottom:28px;"></div>
+
+    <span style="font-size:15px;font-weight:600;color:#0f1011;letter-spacing:-0.2px;">
+      MockDay
+    </span>
+
+    <h1 style="margin:28px 0 10px;font-size:22px;font-weight:600;color:#0f1011;letter-spacing:-0.3px;">
+      You have a new notification
+    </h1>
+
+    <p style="margin:0 0 28px;font-size:14px;line-height:1.7;color:#5a6070;">
+      ${note}
+    </p>
+
+    <div style="height:1px;background:#eceef2;margin-bottom:24px;"></div>
+
+    <p style="margin:0 0 4px;font-size:12px;color:#a8afbe;line-height:1.6;">
+      This is an automated message, no action needed.
     </p>
     <p style="margin:0;font-size:12px;color:#c4c8d1;">
       &copy; ${new Date().getFullYear()} MockDay
