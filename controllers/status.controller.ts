@@ -223,8 +223,9 @@ export async function GetAllStatus(req: FastifyRequest, reply: FastifyReply) {
         {
           fk_user_id: new ObjectId(user_id),
         },
-        { projection: { fk_user_id: 0 } },
+        { projection: { fk_user_id: 0, created_on: 0, default: 0 } },
       )
+      .sort({ updated_on: -1 })
       .toArray();
     return send_success(reply, data, 200);
   } catch (err) {

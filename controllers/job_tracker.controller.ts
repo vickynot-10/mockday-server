@@ -21,11 +21,17 @@ export async function GetTrackers(req: FastifyRequest, reply: FastifyReply) {
       limit = 25,
       sort = -1,
       search,
+      from,
+      to,
+      status,
     } = req.query as {
       page?: string | number;
       limit?: string | number;
       sort?: string | number;
       search?: string;
+      from?: string;
+      to?: string;
+      status?: string;
     };
 
     const pageNum = Math.max(Number(page) || 1, 1);
@@ -52,6 +58,31 @@ export async function GetTrackers(req: FastifyRequest, reply: FastifyReply) {
           },
         },
       ];
+    }
+
+    if (from || to) {
+      match.applied_on = {};
+
+      if (from) {
+        match.applied_on.$gte = new Date(from);
+      }
+
+      if (to) {
+        match.applied_on.$lte = new Date(to);
+      }
+    }
+
+    if (status) {
+      const status_obj = status
+        .split(",")
+        .filter((id) => ObjectId.isValid(id))
+        .map((id) => new ObjectId(id));
+
+      if (status_obj.length > 0) {
+        match.status = {
+          $in: status_obj,
+        };
+      }
     }
 
     const [docs, total] = await Promise.all([
@@ -153,7 +184,6 @@ export async function GetTrackerbyID(req: FastifyRequest, reply: FastifyReply) {
           updated_on: 0,
           applied_on: 0,
           image: 0,
-          status: 0,
         },
       },
     );
@@ -184,6 +214,14 @@ export async function SaveTracker(req: FastifyRequest, reply: FastifyReply) {
 
     const { _id, ...data } = validate.data;
 
+    let status: string | ObjectId = data.status;
+
+    if (status && ObjectId.isValid(status)) {
+      status = new ObjectId(status);
+    } else {
+      status = "applied";
+    }
+
     if (_id && ObjectId.isValid(_id)) {
       const update = await db.collection("trackers").updateOne(
         {
@@ -193,6 +231,7 @@ export async function SaveTracker(req: FastifyRequest, reply: FastifyReply) {
         {
           $set: {
             ...data,
+            status,
             updated_on: new Date(),
           },
         },
@@ -211,6 +250,7 @@ export async function SaveTracker(req: FastifyRequest, reply: FastifyReply) {
 
     const insert = await db.collection("trackers").insertOne({
       ...data,
+      status,
       fk_user_id: new ObjectId(user_id),
       applied_on: new Date(),
       created_on: new Date(),
@@ -220,12 +260,7 @@ export async function SaveTracker(req: FastifyRequest, reply: FastifyReply) {
       return send_error(reply, "Internal Server Error", 500);
     }
 
-    return send_success(
-      reply,
-      { _id: insert.insertedId },
-      200,
-      "Tracker Created Successfully !",
-    );
+    return send_success(reply, {}, 200, "Tracker Created Successfully !");
   } catch (err) {
     return send_error(reply, "Internal Server Error", 500);
   }
@@ -254,7 +289,7 @@ export async function UpdateTrackerStatus(
 
     const { status_id, tracker_id } = validate.data;
 
-    if (!ObjectId.isValid(status_id) || !ObjectId.isValid(tracker_id)) {
+    if (!ObjectId.isValid(tracker_id)) {
       return send_error(reply, "Invalid Payload !");
     }
 
@@ -265,7 +300,7 @@ export async function UpdateTrackerStatus(
       },
       {
         $set: {
-          status: new ObjectId(status_id),
+          status: ObjectId.isValid(status_id) ? new ObjectId(status_id) : null,
           updated_on: new Date(),
         },
       },

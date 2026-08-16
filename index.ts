@@ -3,12 +3,14 @@ import { connectDB } from "./config/mongodb";
 import dotenv from "dotenv";
 import { setIndexes } from "./config/SetIndexes";
 import { ConnectRedis } from "./config/redis";
+import { ConnectQstash } from "./config/qstash";
 dotenv.config();
 
 async function StartServer() {
   try {
     await connectDB();
     await ConnectRedis();
+    ConnectQstash();
     await setIndexes();
 
     await app.listen({
