@@ -48,11 +48,21 @@ export async function GetNotificationsList(
     }
 
     const db = get_db();
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
     const doc = await db
       .collection("notification-logs")
       .find(
         {
           fk_user_id: new ObjectId(user_id),
+          fired_at: {
+            $gte: startOfDay,
+            $lte: endOfDay,
+          },
         },
         {
           projection: {
@@ -62,6 +72,7 @@ export async function GetNotificationsList(
           },
         },
       )
+      .sort({ fired_at: -1 })
       .toArray();
 
     return send_success(reply, doc, 200);
