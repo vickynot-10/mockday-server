@@ -4,12 +4,13 @@ export function ConnectQstash() {
   if (connection) return connection;
 
   const token = process.env.QSTASH_TOKEN;
+   const baseUrl = process.env.QSTASH_URL;
 
-  if (!token) {
-    throw new Error("QSTASH_TOKEN is not set in environment variables");
+  if (!token || !baseUrl) {
+    throw new Error("Invalid Config for Qstash");
   }
 
-  connection = new Client({ token });
+  connection = new Client({ token , baseUrl });
   console.log("QStash connected successfully");
   return connection;
 }

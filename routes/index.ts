@@ -13,12 +13,30 @@ import { extensionAuthMiddleware } from "../middlewares/extension.middleware";
 import { JobTrackerRoutes } from "./job_tracker.route";
 import { ProfileRoutes } from "./profile.route";
 
+import { ReminderFireWebhook } from "../controllers/webhook.controller";
+
 export const RegisterRoutes = async (app: FastifyInstance) => {
   app.register(AuthRoutes, { prefix: "/" });
 
   app.register(async (instance) => {
     instance.addHook("preHandler", extensionAuthMiddleware);
     instance.register(ExtensionRoutes, { prefix: "/extensions-app" });
+  });
+
+  app.register(async (instance) => {
+    instance.addContentTypeParser(
+      "application/json",
+      { parseAs: "string" },
+      (req, body, done) => {
+        (req as any).rawBody = body;
+        try {
+          done(null, JSON.parse(body as string));
+        } catch (err) {
+          done(err as Error, undefined);
+        }
+      },
+    );
+    instance.post("/webhooks/reminder-fire", ReminderFireWebhook);
   });
 
   app.register(async (instance) => {

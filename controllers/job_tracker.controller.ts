@@ -2,6 +2,7 @@ import { send_success, send_error, send_info } from "../utils/response";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { ObjectId } from "mongodb";
 import { get_db } from "../config/mongodb";
+import { CreateReminder, DeleteReminder } from "../service/reminder.service";
 import {
   JobUpdateStatusSchema,
   TrackerSaveSchema,
@@ -253,12 +254,12 @@ export async function SaveTracker(req: FastifyRequest, reply: FastifyReply) {
 
     const { _id, ...data } = validate.data;
 
-    let status: string | ObjectId = data.status;
+    let status: null | ObjectId = data.status;
 
     if (status && ObjectId.isValid(status)) {
       status = new ObjectId(status);
     } else {
-      status = "applied";
+      status = null;
     }
 
     if (_id && ObjectId.isValid(_id)) {
@@ -332,6 +333,9 @@ export async function UpdateTrackerStatus(
       return send_error(reply, "Invalid Payload !");
     }
 
+    if (status_id !== null && !ObjectId.isValid(status_id)) {
+      return send_error(reply, "Invalid Status ID");
+    }
     const update = await db.collection("trackers").updateOne(
       {
         fk_user_id: new ObjectId(user_id),
@@ -390,6 +394,23 @@ export async function SaveReminders(req: FastifyRequest, reply: FastifyReply) {
     reminder_at.setUTCHours(hours, minutes, 0, 0);
 
     const db = get_db();
+
+    const existing = await db.collection("reminders").findOne(
+      {
+        fk_user_id: new ObjectId(user_id),
+        fk_tracker_id: new ObjectId(fk_tracker_id),
+      },
+      {
+        projection: { qstash_message_id: 1 },
+      },
+    );
+
+    if (existing?.qstash_message_id) {
+      await DeleteReminder(existing.qstash_message_id);
+    }
+
+    const qstash_message_id = await CreateReminder(fk_tracker_id,user_id, reminder_at);
+
     const insert = await db.collection("reminders").updateOne(
       {
         fk_user_id: new ObjectId(user_id),
@@ -402,6 +423,7 @@ export async function SaveReminders(req: FastifyRequest, reply: FastifyReply) {
           time,
           reminder_at,
           updated_on: new Date(),
+          qstash_message_id,
         },
         $setOnInsert: {
           fk_user_id: new ObjectId(user_id),
@@ -423,6 +445,7 @@ export async function SaveReminders(req: FastifyRequest, reply: FastifyReply) {
       "Reminders Saved Successfully !",
     );
   } catch (err) {
+    console.log(err)
     return send_error(reply, "Internal Server Error", 500);
   }
 }
@@ -446,14 +469,12 @@ export async function DeleteReminders(
 
     const db = get_db();
 
-    const delete_doc = await db.collection("reminders").deleteOne({
+    const existing = await db.collection("reminders").findOne({
       fk_user_id: new ObjectId(user_id),
       fk_tracker_id: new ObjectId(id),
     });
-    if (!delete_doc || !delete_doc.acknowledged) {
-      return send_error(reply, "Internal Server Error", 500);
-    }
-    if (delete_doc.deletedCount <= 0) {
+
+    if (!existing) {
       return send_error(
         reply,
         "Reminder not found ,Could Already deleted",
@@ -461,6 +482,17 @@ export async function DeleteReminders(
       );
     }
 
+    if (existing?.qstash_message_id) {
+      await DeleteReminder(existing.qstash_message_id);
+    }
+
+    const delete_doc = await db.collection("reminders").deleteOne({
+      fk_user_id: new ObjectId(user_id),
+      fk_tracker_id: new ObjectId(id),
+    });
+    if (!delete_doc || !delete_doc.acknowledged) {
+      return send_error(reply, "Internal Server Error", 500);
+    }
     return send_success(reply, {}, 200, "Reminder Deleted Successfully !");
   } catch (err) {
     return send_error(reply, "Internal Server Error", 500);
