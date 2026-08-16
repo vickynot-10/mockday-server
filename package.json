@@ -27,6 +27,7 @@
     "@fastify/cookie": "^11.1.1",
     "@fastify/cors": "^11.3.0",
     "@fastify/multipart": "^10.1.0",
+    "@onesignal/node-onesignal": "^5.13.2",
     "@upstash/qstash": "^2.11.3",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.81.2",

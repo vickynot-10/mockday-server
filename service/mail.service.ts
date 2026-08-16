@@ -19,6 +19,15 @@ export async function sendOtpEmail(email: string, otp: string) {
   });
 }
 
+export async function sendNotification(email: string, note: string) {
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM,
+    to: email,
+    subject: "Your verification code",
+    html: `Testign html with noet ${note}`,
+  });
+}
+
 function getTemplates(type: number, details: any) {
   if (type === 1) {
     const { otp } = details;

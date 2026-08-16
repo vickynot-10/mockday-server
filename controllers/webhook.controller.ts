@@ -4,7 +4,9 @@ import { ObjectId } from "mongodb";
 import { get_db } from "../config/mongodb";
 import { VerifyQStashSign } from "../service/reminder.service";
 import { WEBHOOK_CONSTANTS } from "../constants";
-import { DeleteReminder } from "../service/reminder.service";
+import { sendNotification } from "../service/mail.service";
+import { sendPushNotification } from "../service/notification.service";
+
 export async function ReminderFireWebhook(
   req: FastifyRequest,
   reply: FastifyReply,
@@ -45,14 +47,16 @@ export async function ReminderFireWebhook(
     }
 
     const get_notyf_settings = await db.collection("notifications").findOne({
-      fk_tracker_id,
       fk_user_id,
     });
 
     const sendAsEmail = get_notyf_settings?.email ?? false;
     const sendAsPush = get_notyf_settings?.push ?? false;
 
-    if (!get_notyf_settings || (!sendAsEmail && !sendAsPush) ) {
+
+    const note = reminder?.note ?? "";
+
+    if (!get_notyf_settings || (!sendAsEmail && !sendAsPush)) {
       await db.collection("notification-logs").insertOne({
         fk_tracker_id,
         fk_user_id,
@@ -60,17 +64,93 @@ export async function ReminderFireWebhook(
         fired_at: new Date(),
         status: WEBHOOK_CONSTANTS.NOTIFICATION_TYPE.ERROR,
         msg: "Notification Settings is not enabled",
-        notes: reminder?.note ?? "",
+        notes: note,
       });
-      return send_error(reply , "Settings not found !")
+      return send_error(reply, "Settings not found !");
     }
 
-    if(sendAsEmail){
+    if (sendAsEmail) {
+      let email = get_notyf_settings?.notify_email ?? null;
 
+      if (!email) {
+        const findUser: any = await db
+          .collection("users")
+          .findOne({ _id: fk_user_id }, { projection: { email: 1 } });
+
+        email = findUser?.email ?? null;
+      }
+
+      if (!email) {
+        await db.collection("notification-logs").insertOne({
+          fk_tracker_id,
+          fk_user_id,
+          fk_reminder_id: reminder._id,
+          fired_at: new Date(),
+          status: WEBHOOK_CONSTANTS.NOTIFICATION_TYPE.ERROR,
+          msg: "Email is not configured !",
+          notes: note,
+        });
+      } else {
+        try {
+          await sendNotification(email, note);
+          await db.collection("notification-logs").insertOne({
+            fk_tracker_id,
+            fk_user_id,
+            fk_reminder_id: reminder._id,
+            fired_at: new Date(),
+            status: WEBHOOK_CONSTANTS.NOTIFICATION_TYPE.SUCCESS,
+            msg: "Email sent successfully",
+            notes: note,
+          });
+        } catch (err) {
+          await db.collection("notification-logs").insertOne({
+            fk_tracker_id,
+            fk_user_id,
+            fk_reminder_id: reminder._id,
+            fired_at: new Date(),
+            status: WEBHOOK_CONSTANTS.NOTIFICATION_TYPE.ERROR,
+            msg: err instanceof Error ? err.message : "Failed to send email",
+            notes: note,
+          });
+        }
+      }
     }
 
-    if(sendAsPush){
-        
+    if (sendAsPush) {
+      if (!get_notyf_settings.push_registered) {
+        await db.collection("notification-logs").insertOne({
+          fk_tracker_id,
+          fk_user_id,
+          fk_reminder_id: reminder._id,
+          fired_at: new Date(),
+          status: WEBHOOK_CONSTANTS.NOTIFICATION_TYPE.ERROR,
+          msg: "Please Register your Device for notifications !",
+          notes: note,
+        });
+      } else {
+        try {
+          await sendPushNotification(user_id, note);
+          await db.collection("notification-logs").insertOne({
+            fk_tracker_id,
+            fk_user_id,
+            fk_reminder_id: reminder._id,
+            fired_at: new Date(),
+            status: WEBHOOK_CONSTANTS.NOTIFICATION_TYPE.SUCCESS,
+            msg: "Push notification sent",
+            notes: note,
+          });
+        } catch (err) {
+          await db.collection("notification-logs").insertOne({
+            fk_tracker_id,
+            fk_user_id,
+            fk_reminder_id: reminder._id,
+            fired_at: new Date(),
+            status: WEBHOOK_CONSTANTS.NOTIFICATION_TYPE.ERROR,
+            msg: err instanceof Error ? err.message : "Failed to send push",
+            notes: note,
+          });
+        }
+      }
     }
 
     return send_success(reply, {}, 200);

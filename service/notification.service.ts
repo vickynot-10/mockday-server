@@ -1,24 +1,19 @@
-import nodemailer from "nodemailer";
+import * as OneSignal from "@onesignal/node-onesignal";
+import { onesignal } from "../config/onesignal";
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT),
-  secure: process.env.SMTP_SECURE === "true",
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
-
-export async function SendReminderEmail(
-  to: string,
+export async function sendPushNotification(
+  onesignal_user_id: string,
   note: string,
-  reminder_at: Date,
 ) {
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM,
-    to,
-    subject: "Reminder",
-    text: `${note}\n\nScheduled for: ${reminder_at.toLocaleString()}`,
-  });
+  const notification = new OneSignal.Notification();
+  notification.app_id = process.env.ONESIGNAL_APP_ID as string;
+  notification.include_aliases = {
+    external_id: [onesignal_user_id],
+  };
+  notification.target_channel = "push";
+  notification.headings = { en: "Reminder" };
+  notification.contents = { en: note || "You have a reminder" };
+
+  const result = await onesignal().createNotification(notification);
+  return result;
 }

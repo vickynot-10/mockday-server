@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import { setIndexes } from "./config/SetIndexes";
 import { ConnectRedis } from "./config/redis";
 import { ConnectQstash } from "./config/qstash";
+import { ConnectOneSignal } from "./config/onesignal";
 dotenv.config();
 
 async function StartServer() {
@@ -12,6 +13,7 @@ async function StartServer() {
     await ConnectRedis();
     ConnectQstash();
     await setIndexes();
+     ConnectOneSignal()
 
     await app.listen({
       port: Number(process.env.PORT) || 3001,
