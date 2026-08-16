@@ -5,6 +5,7 @@ import { get_db } from "../config/mongodb";
 import {
   JobUpdateStatusSchema,
   TrackerSaveSchema,
+  SaveReminderSchema,
 } from "../schema/job_tracker.schema";
 
 export async function GetTrackers(req: FastifyRequest, reply: FastifyReply) {
@@ -194,6 +195,44 @@ export async function GetTrackerbyID(req: FastifyRequest, reply: FastifyReply) {
   }
 }
 
+export async function GetTrackerRemindersID(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const { user_id } = req.user;
+
+    if (!user_id || !ObjectId.isValid(user_id)) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const { id } = req.query as {
+      id: string;
+    };
+
+    if (!id || !ObjectId.isValid(id)) {
+      return send_error(reply, "Job List not found", 404);
+    }
+    const db = get_db();
+    const doc = await db.collection("reminders").findOne(
+      {
+        fk_user_id: new ObjectId(user_id),
+        fk_tracker_id: new ObjectId(id),
+      },
+      {
+        projection: {
+          fk_user_id: 0,
+          updated_on: 0,
+        },
+      },
+    );
+
+    return send_success(reply, doc, 200);
+  } catch (err) {
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
+
 export async function SaveTracker(req: FastifyRequest, reply: FastifyReply) {
   try {
     const db = get_db();
@@ -318,6 +357,111 @@ export async function UpdateTrackerStatus(
     }
 
     return send_success(reply, {}, 200, "Status Updated Successfully !");
+  } catch (err) {
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
+
+export async function SaveReminders(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const { user_id } = req.user;
+
+    if (!user_id || !ObjectId.isValid(user_id)) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const body = req.body;
+
+    const validate = SaveReminderSchema.safeParse(body);
+
+    if (!validate.success) {
+      const msg = validate.error.issues[0].message ?? "Invalid Data";
+      return send_error(reply, msg);
+    }
+
+    const { fk_tracker_id, note, date, time } = validate.data;
+
+    if (!ObjectId.isValid(fk_tracker_id)) {
+      return send_error(reply, "Invalid Payload !", 400);
+    }
+
+    const [hours, minutes] = time.split(":").map(Number);
+    const reminder_at = new Date(date);
+    reminder_at.setUTCHours(hours, minutes, 0, 0);
+
+    const db = get_db();
+    const insert = await db.collection("reminders").updateOne(
+      {
+        fk_user_id: new ObjectId(user_id),
+        fk_tracker_id: new ObjectId(fk_tracker_id),
+      },
+      {
+        $set: {
+          note,
+          date: new Date(date),
+          time,
+          reminder_at,
+          updated_on: new Date(),
+        },
+        $setOnInsert: {
+          fk_user_id: new ObjectId(user_id),
+          fk_tracker_id: new ObjectId(fk_tracker_id),
+        },
+      },
+      {
+        upsert: true,
+      },
+    );
+
+    if (!insert || !insert.acknowledged) {
+      return send_error(reply, "Internal Server Error", 500);
+    }
+    return send_success(
+      reply,
+      { fk_tracker_id },
+      200,
+      "Reminders Saved Successfully !",
+    );
+  } catch (err) {
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
+
+export async function DeleteReminders(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const { user_id } = req.user;
+
+    if (!user_id || !ObjectId.isValid(user_id)) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const id = req.body as string;
+
+    if (!id || !ObjectId.isValid(id)) {
+      return send_error(reply, "Invalid Payload !");
+    }
+
+    const db = get_db();
+
+    const delete_doc = await db.collection("reminders").deleteOne({
+      fk_user_id: new ObjectId(user_id),
+      fk_tracker_id: new ObjectId(id),
+    });
+    if (!delete_doc || !delete_doc.acknowledged) {
+      return send_error(reply, "Internal Server Error", 500);
+    }
+    if (delete_doc.deletedCount <= 0) {
+      return send_error(
+        reply,
+        "Reminder not found ,Could Already deleted",
+        404,
+      );
+    }
+
+    return send_success(reply, {}, 200, "Reminder Deleted Successfully !");
   } catch (err) {
     return send_error(reply, "Internal Server Error", 500);
   }
