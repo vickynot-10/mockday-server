@@ -6,6 +6,7 @@ import { ExtensionAuthRoutes } from "./extension_auth.route";
 import { ExtensionRoutes } from "./extension.route";
 import { StatusRoutes } from "./status.route";
 import { NotificationRoutes } from "./notifications.route";
+import { DashboardRoutes } from "./dashboard.route";
 
 import { authMiddleware } from "../middlewares/auth.middleware";
 import uploadPlugin from "../plugins/upload";
@@ -49,5 +50,6 @@ export const RegisterRoutes = async (app: FastifyInstance) => {
     instance.register(StatusRoutes, { prefix: "/status" });
     instance.register(NotificationRoutes, { prefix: "/notifications" });
     instance.register(ProfileRoutes, { prefix: "/profile" });
+    instance.register(DashboardRoutes, { prefix: "/dashboard" });
   });
 };

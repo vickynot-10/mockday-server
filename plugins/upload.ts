@@ -132,6 +132,7 @@ export default async function uploadPlugin(app: FastifyInstance) {
             400,
           );
         }
+        
 
         const docs = files.map((f) => ({
           file_id: f.file_id,

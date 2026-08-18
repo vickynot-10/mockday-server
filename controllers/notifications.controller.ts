@@ -81,6 +81,91 @@ export async function GetNotificationsList(
   }
 }
 
+export async function GetNotificationsLogs(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const { user_id } = req.user;
+
+    if (!user_id || !ObjectId.isValid(user_id)) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const { page, from, to, type } = req.query as {
+      page?: string;
+      from?: string;
+      to?: string;
+      type?: string;
+    };
+    const match: any = {
+      fk_user_id: new ObjectId(user_id),
+    };
+
+    if (from || to) {
+      match.fired_at = {};
+
+      if (from) {
+        match.fired_at.$gte = new Date(from);
+      }
+
+      if (to) {
+        match.fired_at.$lte = new Date(to);
+      }
+    }
+
+    if (type) {
+      match.provider = Number(type);
+    }
+
+    const MAX = 20;
+    const currentPage = Math.max(1, parseInt(page ?? "1", 10) || 1);
+    const skip = (currentPage - 1) * MAX;
+
+    const db = get_db();
+
+    const fk_user_id = new ObjectId(user_id);
+
+    const cursor = db.collection("notification-logs").find(
+      {
+        fk_user_id,
+      },
+      {
+        projection: {
+          fk_tracker_id: 0,
+          fk_user_id: 0,
+          fk_reminder_id: 0,
+        },
+      },
+    );
+
+    const [docs, total] = await Promise.all([
+      cursor
+        .sort({ fired_at: -1 })
+        .skip(skip)
+        .limit(MAX + 1)
+        .toArray(),
+      db.collection("notification-logs").countDocuments({
+        fk_user_id,
+      }),
+    ]);
+
+    const hasNextPage = docs.length > MAX;
+    const items = hasNextPage ? docs.slice(0, MAX) : docs;
+
+    return send_success(
+      reply,
+      {
+        items,
+        nextPage: hasNextPage ? currentPage + 1 : null,
+        total,
+      },
+      200,
+    );
+  } catch (err) {
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
 export async function SaveNotifications(
   req: FastifyRequest,
   reply: FastifyReply,

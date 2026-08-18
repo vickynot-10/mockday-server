@@ -3,5 +3,9 @@ export const WEBHOOK_CONSTANTS = {
     NOTIFICATION_TYPE : {
         SUCCESS : 1,
         ERROR : 2
+    },
+    PROVIDER : {
+        EMAIL : 1,
+        PUSH : 2
     }
 }

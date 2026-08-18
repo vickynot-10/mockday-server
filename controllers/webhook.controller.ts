@@ -53,7 +53,6 @@ export async function ReminderFireWebhook(
     const sendAsEmail = get_notyf_settings?.email ?? false;
     const sendAsPush = get_notyf_settings?.push ?? false;
 
-
     const note = reminder?.note ?? "";
 
     if (!get_notyf_settings || (!sendAsEmail && !sendAsPush)) {
@@ -87,6 +86,7 @@ export async function ReminderFireWebhook(
           fk_reminder_id: reminder._id,
           fired_at: new Date(),
           status: WEBHOOK_CONSTANTS.NOTIFICATION_TYPE.ERROR,
+          provider: WEBHOOK_CONSTANTS.PROVIDER.EMAIL,
           msg: "Email is not configured !",
           notes: note,
         });
@@ -99,6 +99,7 @@ export async function ReminderFireWebhook(
             fk_reminder_id: reminder._id,
             fired_at: new Date(),
             status: WEBHOOK_CONSTANTS.NOTIFICATION_TYPE.SUCCESS,
+            provider: WEBHOOK_CONSTANTS.PROVIDER.EMAIL,
             msg: "Email sent successfully",
             notes: note,
           });
@@ -109,6 +110,7 @@ export async function ReminderFireWebhook(
             fk_reminder_id: reminder._id,
             fired_at: new Date(),
             status: WEBHOOK_CONSTANTS.NOTIFICATION_TYPE.ERROR,
+            provider: WEBHOOK_CONSTANTS.PROVIDER.EMAIL,
             msg: err instanceof Error ? err.message : "Failed to send email",
             notes: note,
           });
@@ -124,6 +126,7 @@ export async function ReminderFireWebhook(
           fk_reminder_id: reminder._id,
           fired_at: new Date(),
           status: WEBHOOK_CONSTANTS.NOTIFICATION_TYPE.ERROR,
+          provider: WEBHOOK_CONSTANTS.PROVIDER.PUSH,
           msg: "Please Register your Device for notifications !",
           notes: note,
         });
@@ -136,6 +139,7 @@ export async function ReminderFireWebhook(
             fk_reminder_id: reminder._id,
             fired_at: new Date(),
             status: WEBHOOK_CONSTANTS.NOTIFICATION_TYPE.SUCCESS,
+            provider: WEBHOOK_CONSTANTS.PROVIDER.PUSH,
             msg: "Push notification sent",
             notes: note,
           });
@@ -146,6 +150,7 @@ export async function ReminderFireWebhook(
             fk_reminder_id: reminder._id,
             fired_at: new Date(),
             status: WEBHOOK_CONSTANTS.NOTIFICATION_TYPE.ERROR,
+            provider: WEBHOOK_CONSTANTS.PROVIDER.PUSH,
             msg: err instanceof Error ? err.message : "Failed to send push",
             notes: note,
           });
