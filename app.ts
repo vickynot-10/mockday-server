@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import cookie from "@fastify/cookie";
 import { RegisterRoutes } from "./routes";
 
+
 import cors from "@fastify/cors";
 const app = Fastify({
   // logger: {

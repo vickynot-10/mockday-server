@@ -1,7 +1,7 @@
-import { S3Client, DeleteObjectsCommand } from "@aws-sdk/client-s3";
+import { S3Client, DeleteObjectsCommand , GetObjectCommand } from "@aws-sdk/client-s3";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
 import { Agent } from "https";
-import dotenv from "dotenv";
+import dotenv from "dotenv"
 
 dotenv.config();
 
@@ -36,4 +36,26 @@ export async function deleteFilesFromS3(keys: string[]) {
       `Failed to delete: ${result.Errors.map((e) => e.Key).join(", ")}`,
     );
   }
+}
+
+
+
+export async function getFileBufferFromS3(key: string): Promise<Buffer> {
+  const command = new GetObjectCommand({
+    Bucket: process.env.B2_BUCKET_NAME!,
+    Key: key,
+  });
+
+  const result = await s3.send(command);
+
+  if (!result.Body) {
+    throw new Error(`No file body returned for key: ${key}`);
+  }
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of result.Body as any) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  return Buffer.concat(chunks);
 }

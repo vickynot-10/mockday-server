@@ -9,7 +9,8 @@ import { ObjectId } from "mongodb";
 import { send_error, send_success } from "../utils/response";
 import { MAXIMUM_RESUME_UPLOADS } from "../constants";
 import { deleteFilesFromS3 } from "../service/bucketClient";
-
+import { getResumeParseQueue } from "../queue/resume_parser.queue";
+import { invalidateResumeCache } from "../cache/resume.cache";
 const BUCKET = process.env.B2_BUCKET_NAME!;
 
 interface UploadUrlRequest {
@@ -132,7 +133,6 @@ export default async function uploadPlugin(app: FastifyInstance) {
             400,
           );
         }
-        
 
         const docs = files.map((f) => ({
           file_id: f.file_id,
@@ -149,6 +149,17 @@ export default async function uploadPlugin(app: FastifyInstance) {
         if (!insert_doc || !insert_doc.acknowledged) {
           return send_error(reply, "Internal Server Error !", 500);
         }
+
+        await Promise.all([
+          docs.map((doc) =>
+            getResumeParseQueue().add("parse-resume", {
+              file_id: doc.file_id,
+              key: doc.key,
+              fk_user_id: user_obj_id.toString(),
+            }),
+          ),
+          invalidateResumeCache(userId),
+        ]);
 
         return send_success(
           reply,

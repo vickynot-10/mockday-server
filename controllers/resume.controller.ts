@@ -214,16 +214,13 @@ export async function DeleteResumes(req: FastifyRequest, reply: FastifyReply) {
         _id: { $in: filter_ids },
         fk_user_id: new ObjectId(user_id),
       }),
+      invalidateResumeCache(user_id),
+      invalidateResumeUrlCacheBulk(user_id, deleted_ids),
     ]);
 
     if (delete_result.deletedCount === 0) {
       return send_error(reply, "Nothing deleted", 404);
     }
-
-    await Promise.all([
-      invalidateResumeCache(user_id),
-      invalidateResumeUrlCacheBulk(user_id, deleted_ids),
-    ]);
 
     return send_success(reply, {}, 200, "Deleted Successfully !");
   } catch (err) {

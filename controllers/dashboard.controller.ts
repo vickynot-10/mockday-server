@@ -98,49 +98,49 @@ export async function GetDashboard(req: FastifyRequest, reply: FastifyReply) {
     const { from, to } = getDateFilter(date_number);
 
     const db = get_db();
-   const jobs = await db
-  .collection("trackers")
-  .aggregate([
-    {
-      $match: {
-        fk_user_id: new ObjectId(user_id),
-        applied_on: {
-          $gte: from,
-          $lt: to,
-        },
-      },
-    },
-
-    {
-      $group: {
-        _id: {
-          $dateToString: {
-            format: "%Y-%m-%d",
-            date: "$applied_on",
+    const jobs = await db
+      .collection("trackers")
+      .aggregate([
+        {
+          $match: {
+            fk_user_id: new ObjectId(user_id),
+            applied_on: {
+              $gte: from,
+              $lt: to,
+            },
           },
         },
-        count: {
-          $sum: 1,
+
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: "%Y-%m-%d",
+                date: "$applied_on",
+              },
+            },
+            count: {
+              $sum: 1,
+            },
+          },
         },
-      },
-    },
 
-    {
-      $sort: {
-        _id: 1,
-      },
-    },
+        {
+          $sort: {
+            _id: 1,
+          },
+        },
 
-    {
-      $project: {
-        _id: 0,
-        date: "$_id",
-        count: 1,
-      },
-    },
-  ])
-  .toArray();
-    return send_success(reply, {jobs}, 200);
+        {
+          $project: {
+            _id: 0,
+            date: "$_id",
+            count: 1,
+          },
+        },
+      ])
+      .toArray();
+    return send_success(reply, { jobs }, 200);
   } catch (err) {
     return send_error(reply, "Internal Server Error", 500);
   }
