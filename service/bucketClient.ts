@@ -1,7 +1,13 @@
-import { S3Client, DeleteObjectsCommand , GetObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  DeleteObjectsCommand,
+  GetObjectCommand,
+} from "@aws-sdk/client-s3";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
 import { Agent } from "https";
-import dotenv from "dotenv"
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+
+import dotenv from "dotenv";
 
 dotenv.config();
 
@@ -38,8 +44,6 @@ export async function deleteFilesFromS3(keys: string[]) {
   }
 }
 
-
-
 export async function getFileBufferFromS3(key: string): Promise<Buffer> {
   const command = new GetObjectCommand({
     Bucket: process.env.B2_BUCKET_NAME!,
@@ -58,4 +62,15 @@ export async function getFileBufferFromS3(key: string): Promise<Buffer> {
   }
 
   return Buffer.concat(chunks);
+}
+
+export async function getFileSignedUrl(key: string) {
+  const command = new GetObjectCommand({
+    Bucket: process.env.B2_BUCKET_NAME!,
+    Key: key,
+  });
+
+  return await getSignedUrl(s3, command, {
+    expiresIn: 300, // 5 minutes
+  });
 }

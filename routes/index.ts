@@ -16,7 +16,7 @@ import { extensionAuthMiddleware } from "../middlewares/extension.middleware";
 import { JobTrackerRoutes } from "./job_tracker.route";
 import { ProfileRoutes } from "./profile.route";
 
-import { ReminderFireWebhook } from "../controllers/webhook.controller";
+import { ReminderFireWebhook, ResumeParserWebhook } from "../controllers/webhook.controller";
 
 export const RegisterRoutes = async (app: FastifyInstance) => {
   app.register(AuthRoutes, { prefix: "/" });
@@ -40,6 +40,7 @@ export const RegisterRoutes = async (app: FastifyInstance) => {
       },
     );
     instance.post("/webhooks/reminder-fire", ReminderFireWebhook);
+    instance.post("/webhooks/parse-resume", ResumeParserWebhook);
   });
 
   app.register(async (instance) => {

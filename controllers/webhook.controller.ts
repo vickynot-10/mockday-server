@@ -6,6 +6,10 @@ import { VerifyQStashSign } from "../service/reminder.service";
 import { WEBHOOK_CONSTANTS } from "../constants";
 import { sendNotification } from "../service/mail.service";
 import { sendPushNotification } from "../service/notification.service";
+import { ArrayProps } from "../service/resume-parser.service";
+import { getFileSignedUrl } from "../service/bucketClient";
+import { pdfToDocx } from "../service/pdf_adobe.service";
+
 
 export async function ReminderFireWebhook(
   req: FastifyRequest,
@@ -160,6 +164,49 @@ export async function ReminderFireWebhook(
 
     return send_success(reply, {}, 200);
   } catch (err) {
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
+
+type ResumeParserWebhookBody = {
+  items: ArrayProps[];
+};
+
+export async function ResumeParserWebhook(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const signature = req.headers["upstash-signature"] as string | undefined;
+
+    const raw_body = (req as any).rawBody as string;
+
+    const is_valid = await VerifyQStashSign(signature, raw_body);
+
+    if (!is_valid) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const body: ResumeParserWebhookBody = JSON.parse(raw_body);
+
+    const filtered = body.items.filter(
+      (el) => el.fk_user_id && ObjectId.isValid(el.fk_user_id),
+    );
+
+    if (!filtered || filtered.length <= 0) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    for (const file of filtered) {
+      const signedUrl = await getFileSignedUrl(file.key);
+      const docxBuffer = await pdfToDocx(signedUrl);
+      
+    }
+
+    return send_success(reply, {}, 200);
+  } catch (err) {
+    console.error("Resume parser webhook error:", err);
+
     return send_error(reply, "Internal Server Error", 500);
   }
 }

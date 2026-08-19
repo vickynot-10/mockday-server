@@ -9,8 +9,13 @@ import { ObjectId } from "mongodb";
 import { send_error, send_success } from "../utils/response";
 import { MAXIMUM_RESUME_UPLOADS } from "../constants";
 import { deleteFilesFromS3 } from "../service/bucketClient";
-import { getResumeParseQueue } from "../queue/resume_parser.queue";
 import { invalidateResumeCache } from "../cache/resume.cache";
+import {
+  ArrayProps,
+  CreateResumeParser,
+} from "../service/resume-parser.service";
+
+
 const BUCKET = process.env.B2_BUCKET_NAME!;
 
 interface UploadUrlRequest {
@@ -150,20 +155,29 @@ export default async function uploadPlugin(app: FastifyInstance) {
           return send_error(reply, "Internal Server Error !", 500);
         }
 
-        await Promise.all([
-          docs.map((doc) =>
-            getResumeParseQueue().add("parse-resume", {
-              file_id: doc.file_id,
-              key: doc.key,
-              fk_user_id: user_obj_id.toString(),
-            }),
-          ),
-          invalidateResumeCache(userId),
-        ]);
+        await invalidateResumeCache(userId)
+
+        const get_pdfs: ArrayProps[] = [];
+        for (const file of docs) {
+          if (file.suffix !== ".pdf") continue;
+          get_pdfs.push({
+            file_id: file.file_id,
+            fk_user_id: file.fk_user_id.toString(),
+            key: file.key,
+          });
+        }
+
+        if (get_pdfs && get_pdfs.length > 0) {
+          CreateResumeParser(get_pdfs)
+            .then(() => console.log("OK"))
+            .catch((err) => {
+              console.error("Error at firing webhook:", err);
+            });
+        }
 
         return send_success(
           reply,
-          { inserted: insert_doc.insertedCount },
+          { },
           200,
           `${docs.length} documents uploaded successfully`,
         );
