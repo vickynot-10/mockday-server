@@ -6,7 +6,10 @@ import { VerifyQStashSign } from "../service/reminder.service";
 import { WEBHOOK_CONSTANTS } from "../constants";
 import { sendNotification } from "../service/mail.service";
 import { sendPushNotification } from "../service/notification.service";
-import { ArrayProps } from "../service/resume-parser.service";
+import {
+  ArrayProps,
+  extractParagraphsFromDocx,
+} from "../service/resume-parser.service";
 import {
   deleteFilesFromS3,
   getFileSignedUrl,
@@ -207,16 +210,23 @@ export async function ResumeParserWebhook(
       const docxBuffer = await pdfToDocx(signedUrl);
       const docxKey = file.key.replace(/\.pdf$/, ".docx");
 
-      await uploadBufferToS3(
-        docxKey,
-        docxBuffer,
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      );
+      const [paragraphs, _] = await Promise.all([
+       
+
+        extractParagraphsFromDocx(docxBuffer),
+         uploadBufferToS3(
+          docxKey,
+          docxBuffer,
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
+      ]);
+
       await db.collection("resumes").updateOne(
         { _id: new ObjectId(file.original_document_id) },
         {
           $set: {
             docx_key: docxKey,
+            extracted_paragraphs: paragraphs,
             updated_on: new Date(),
           },
         },

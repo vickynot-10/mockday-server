@@ -36,3 +36,27 @@ export async function SendMessage(req: FastifyRequest, reply: FastifyReply) {
     return send_error(reply, "Internal Server Error", 500);
   }
 }
+
+export async function GetResumesList(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const db = get_db();
+    const { user_id } = req.user;
+
+    if (!user_id || !ObjectId.isValid(user_id)) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const resumes = await db
+      .collection("resumes")
+      .find(
+        { fk_user_id: new ObjectId(user_id) },
+        { projection: { filename: 1, default: 1 } },
+      )
+      .sort({ created_at: -1 })
+      .toArray();
+
+    return send_success(reply, resumes, 200);
+  } catch (err) {
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
