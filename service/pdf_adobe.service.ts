@@ -13,7 +13,6 @@ import {
 import { Readable } from "stream";
 export async function pdfToDocx(fileUrl: string): Promise<Buffer> {
   try {
- 
     const sourceResponse = await fetch(fileUrl);
 
     if (!sourceResponse.ok || !sourceResponse.body) {
@@ -48,6 +47,10 @@ export async function pdfToDocx(fileUrl: string): Promise<Buffer> {
       pollingURL,
       resultType: ExportPDFResult,
     });
+
+    if (!pdfServicesResponse.result) {
+      throw new Error("Adobe PDF Services returned no result for export job");
+    }
 
     const resultAsset = pdfServicesResponse.result.asset;
     const streamAsset = await pdfServices.getContent({ asset: resultAsset });

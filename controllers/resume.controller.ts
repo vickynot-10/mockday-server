@@ -13,6 +13,7 @@ import {
   setCachedResumes,
   setCachedResumeUrl,
 } from "../cache/resume.cache";
+import { DeleteResumesService } from "../service/resume-parser.service";
 
 export async function GetResumes(req: FastifyRequest, reply: FastifyReply) {
   try {
@@ -209,7 +210,7 @@ export async function DeleteResumes(req: FastifyRequest, reply: FastifyReply) {
 
     const keys_map = resume.map((item) => item.key);
     const [, delete_result] = await Promise.all([
-      deleteFilesFromS3(keys_map),
+      DeleteResumesService(keys_map),
       db.collection("resumes").deleteMany({
         _id: { $in: filter_ids },
         fk_user_id: new ObjectId(user_id),
@@ -224,6 +225,7 @@ export async function DeleteResumes(req: FastifyRequest, reply: FastifyReply) {
 
     return send_success(reply, {}, 200, "Deleted Successfully !");
   } catch (err) {
+    console.log(err);
     return send_error(reply, "Internal Server Error", 500);
   }
 }

@@ -9,14 +9,17 @@ import { NotificationRoutes } from "./notifications.route";
 import { DashboardRoutes } from "./dashboard.route";
 import { AIRoutes } from "./ai.route";
 
-
 import { authMiddleware } from "../middlewares/auth.middleware";
 import uploadPlugin from "../plugins/upload";
 import { extensionAuthMiddleware } from "../middlewares/extension.middleware";
 import { JobTrackerRoutes } from "./job_tracker.route";
 import { ProfileRoutes } from "./profile.route";
 
-import { ReminderFireWebhook, ResumeParserWebhook } from "../controllers/webhook.controller";
+import {
+  DeleteResumeWebhook,
+  ReminderFireWebhook,
+  ResumeParserWebhook,
+} from "../controllers/webhook.controller";
 
 export const RegisterRoutes = async (app: FastifyInstance) => {
   app.register(AuthRoutes, { prefix: "/" });
@@ -41,6 +44,7 @@ export const RegisterRoutes = async (app: FastifyInstance) => {
     );
     instance.post("/webhooks/reminder-fire", ReminderFireWebhook);
     instance.post("/webhooks/parse-resume", ResumeParserWebhook);
+    instance.post("/webhooks/delete-resume", DeleteResumeWebhook);
   });
 
   app.register(async (instance) => {

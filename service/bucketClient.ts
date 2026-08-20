@@ -74,3 +74,22 @@ export async function getFileSignedUrl(key: string) {
     expiresIn: 300, // 5 minutes
   });
 }
+
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+
+export async function uploadBufferToS3(
+  key: string,
+  buffer: Buffer,
+  contentType: string,
+) {
+  const command = new PutObjectCommand({
+    Bucket: process.env.B2_BUCKET_NAME!,
+    Key: key,
+    Body: buffer,
+    ContentType: contentType,
+  });
+
+  await s3.send(command);
+
+  return key;
+}

@@ -7,9 +7,12 @@ import { WEBHOOK_CONSTANTS } from "../constants";
 import { sendNotification } from "../service/mail.service";
 import { sendPushNotification } from "../service/notification.service";
 import { ArrayProps } from "../service/resume-parser.service";
-import { getFileSignedUrl } from "../service/bucketClient";
+import {
+  deleteFilesFromS3,
+  getFileSignedUrl,
+  uploadBufferToS3,
+} from "../service/bucketClient";
 import { pdfToDocx } from "../service/pdf_adobe.service";
-
 
 export async function ReminderFireWebhook(
   req: FastifyRequest,
@@ -197,16 +200,60 @@ export async function ResumeParserWebhook(
       return send_error(reply, "Unauthorized", 401);
     }
 
+    const db = get_db();
+
     for (const file of filtered) {
       const signedUrl = await getFileSignedUrl(file.key);
       const docxBuffer = await pdfToDocx(signedUrl);
-      
+      const docxKey = file.key.replace(/\.pdf$/, ".docx");
+
+      await uploadBufferToS3(
+        docxKey,
+        docxBuffer,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      );
+      await db.collection("resumes").updateOne(
+        { _id: new ObjectId(file.original_document_id) },
+        {
+          $set: {
+            docx_key: docxKey,
+            updated_on: new Date(),
+          },
+        },
+      );
     }
 
     return send_success(reply, {}, 200);
   } catch (err) {
     console.error("Resume parser webhook error:", err);
 
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
+
+export async function DeleteResumeWebhook(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const signature = req.headers["upstash-signature"] as string | undefined;
+    const raw_body = (req as any).rawBody as string;
+    const is_valid = await VerifyQStashSign(signature, raw_body);
+
+    if (!is_valid) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const body = JSON.parse(raw_body) as { items: string[] };
+    if (!body.items || body.items.length === 0) {
+      return send_success(reply, {}, 200);
+    }
+
+    await deleteFilesFromS3(body.items);
+
+    return send_success(reply, {}, 200);
+  } catch (err) {
+    console.error("Delete resume webhook error:", err);
     return send_error(reply, "Internal Server Error", 500);
   }
 }

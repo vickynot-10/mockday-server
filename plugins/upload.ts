@@ -15,7 +15,6 @@ import {
   CreateResumeParser,
 } from "../service/resume-parser.service";
 
-
 const BUCKET = process.env.B2_BUCKET_NAME!;
 
 interface UploadUrlRequest {
@@ -140,6 +139,7 @@ export default async function uploadPlugin(app: FastifyInstance) {
         }
 
         const docs = files.map((f) => ({
+          _id: new ObjectId(),
           file_id: f.file_id,
           key: f.key,
           suffix: path.extname(f.filename).toLowerCase(),
@@ -155,12 +155,13 @@ export default async function uploadPlugin(app: FastifyInstance) {
           return send_error(reply, "Internal Server Error !", 500);
         }
 
-        await invalidateResumeCache(userId)
+        await invalidateResumeCache(userId);
 
         const get_pdfs: ArrayProps[] = [];
         for (const file of docs) {
           if (file.suffix !== ".pdf") continue;
           get_pdfs.push({
+            original_document_id: file._id.toString(),
             file_id: file.file_id,
             fk_user_id: file.fk_user_id.toString(),
             key: file.key,
@@ -177,7 +178,7 @@ export default async function uploadPlugin(app: FastifyInstance) {
 
         return send_success(
           reply,
-          { },
+          {},
           200,
           `${docs.length} documents uploaded successfully`,
         );
