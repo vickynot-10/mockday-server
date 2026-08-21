@@ -172,3 +172,9 @@ ${JSON.stringify(user_details ?? {}, null, 2)}
 USER MESSAGE:
 ${message}`;
 }
+
+
+export function generateTitleFromMessage(message: string): string {
+  const cleaned = message.replace(/\s+/g, " ").trim();
+  return cleaned.length > 60 ? cleaned.slice(0, 60).trim() + "…" : cleaned;
+}

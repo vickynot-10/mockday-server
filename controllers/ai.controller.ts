@@ -15,9 +15,11 @@ import {
   buildBatchPrompt,
   buildPlainChatPrompt,
   extractCommandsAndContent,
+  generateTitleFromMessage,
 } from "../service/resume-parser.service";
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const MAX_CONVERSATION_LIMIT = 20;
 
 export async function SendMessage(req: FastifyRequest, reply: FastifyReply) {
   const { user_id } = req.user;
@@ -26,9 +28,10 @@ export async function SendMessage(req: FastifyRequest, reply: FastifyReply) {
     return send_error(reply, "Unauthorized", 401);
   }
 
-  const { message, resumeId } = req.body as {
+  const { message, resumeId, conversation_id } = req.body as {
     message: string;
     resumeId?: string;
+    conversation_id?: string;
   };
 
   if (!message || typeof message !== "string" || message.trim().length <= 0) {
@@ -91,10 +94,8 @@ export async function SendMessage(req: FastifyRequest, reply: FastifyReply) {
     let user_details = null;
     const isUserIncache = await getUserProfileCache(user_id);
     if (isUserIncache) {
-      console.log("IN cahce")
       user_details = isUserIncache;
     } else {
-      console.log("not in")
       const get_user_details = await db
         .collection("autofills")
         .findOne(
@@ -138,6 +139,37 @@ export async function SendMessage(req: FastifyRequest, reply: FastifyReply) {
     }
 
     send("complete", { reply: parsed });
+    let fk_conversation_id: ObjectId;
+
+    if (conversation_id && ObjectId.isValid(conversation_id)) {
+      fk_conversation_id = new ObjectId(conversation_id);
+    } else {
+      const created = await db.collection("conversations").insertOne({
+        fk_user_id,
+        title: generateTitleFromMessage(message),
+        created_on: new Date(),
+      });
+
+      fk_conversation_id = created.insertedId;
+    }
+
+    await db.collection("messages").insertMany([
+      {
+        fk_conversation_id,
+        fk_user_id,
+        role: "user",
+        content: { kind: "text", text: message },
+        created_on: new Date(),
+      },
+      {
+        fk_conversation_id,
+        fk_user_id,
+        role: "assistant",
+        content: parsed,
+        created_on: new Date(),
+      },
+    ]);
+
     reply.raw.end();
   } catch (err) {
     console.log(err);
@@ -165,6 +197,69 @@ export async function GetResumesList(req: FastifyRequest, reply: FastifyReply) {
       .toArray();
 
     return send_success(reply, resumes, 200);
+  } catch (err) {
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
+
+export async function GetConversationLists(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const db = get_db();
+    const { user_id } = req.user;
+
+    if (!user_id || !ObjectId.isValid(user_id)) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const { page = 1 } = req.query as {
+      page?: string | number;
+    };
+
+    const currentPage = Math.max(Number(page) || 1, 1);
+
+    const skip = (currentPage - 1) * MAX_CONVERSATION_LIMIT;
+
+    const fk_user_id = new ObjectId(user_id);
+    const conversations = await db
+      .collection("conversations")
+      .find(
+        { fk_user_id },
+        {
+          projection: {
+            fk_user_id: 0,
+          },
+        },
+      )
+      .sort({ created_on: -1 })
+      .skip(skip)
+      .limit(MAX_CONVERSATION_LIMIT)
+      .toArray();
+
+    return send_success(reply, conversations, 200);
+  } catch (err) {
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
+export async function GetConversationListsTotal(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const db = get_db();
+    const { user_id } = req.user;
+
+    if (!user_id || !ObjectId.isValid(user_id)) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const total = await db
+      .collection("conversations")
+      .countDocuments({ fk_user_id: new ObjectId(user_id) });
+
+    return send_success(reply, total, 200);
   } catch (err) {
     return send_error(reply, "Internal Server Error", 500);
   }
