@@ -243,7 +243,8 @@ export async function GetConversationLists(
     return send_error(reply, "Internal Server Error", 500);
   }
 }
-export async function GetConversationListsTotal(
+
+export async function GetConversationMessage(
   req: FastifyRequest,
   reply: FastifyReply,
 ) {
@@ -255,11 +256,38 @@ export async function GetConversationListsTotal(
       return send_error(reply, "Unauthorized", 401);
     }
 
-    const total = await db
-      .collection("conversations")
-      .countDocuments({ fk_user_id: new ObjectId(user_id) });
+    const { page = 1, conversation_id } = req.query as {
+      conversation_id: string;
+      page?: string | number;
+    };
 
-    return send_success(reply, total, 200);
+    if (!conversation_id || !ObjectId.isValid(conversation_id)) {
+      return send_error(reply, "Invalid Body");
+    }
+
+    const currentPage = Math.max(Number(page) || 1, 1);
+
+    const skip = (currentPage - 1) * MAX_CONVERSATION_LIMIT;
+
+    const conversations = await db
+      .collection("messages")
+      .find(
+        {
+          fk_user_id: new ObjectId(user_id),
+          fk_conversation_id: new ObjectId(conversation_id),
+        },
+        {
+          projection: {
+            fk_user_id: 0,
+          },
+        },
+      )
+      .sort({ created_on: -1 })
+      .skip(skip)
+      .limit(MAX_CONVERSATION_LIMIT)
+      .toArray();
+
+    return send_success(reply, conversations, 200);
   } catch (err) {
     return send_error(reply, "Internal Server Error", 500);
   }
