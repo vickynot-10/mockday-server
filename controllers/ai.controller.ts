@@ -7,112 +7,142 @@ import {
   getResumeParagraphs,
   setCachedResumeParaTexts,
 } from "../cache/ai.cache";
-import { AI_COMMANDS } from "../constants";
-import { getUserProfileCache, setUserProfileCache } from "../cache/user_details.cache";
+import {
+  getUserProfileCache,
+  setUserProfileCache,
+} from "../cache/user_details.cache";
+import {
+  buildBatchPrompt,
+  buildPlainChatPrompt,
+  extractCommandsAndContent,
+} from "../service/resume-parser.service";
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export async function SendMessage(req: FastifyRequest, reply: FastifyReply) {
+  const { user_id } = req.user;
+
+  if (!user_id || !ObjectId.isValid(user_id)) {
+    return send_error(reply, "Unauthorized", 401);
+  }
+
+  const { message, resumeId } = req.body as {
+    message: string;
+    resumeId?: string;
+  };
+
+  if (!message || typeof message !== "string" || message.trim().length <= 0) {
+    return send_error(reply, "Please Enter a Message !", 400);
+  }
+
+  const { commands, content: jdText } = extractCommandsAndContent(message);
+  const isCommandNeed = commands.length > 0;
+
+  if (isCommandNeed && (!resumeId || !ObjectId.isValid(resumeId))) {
+    return send_error(reply, "For using commands, please select a resume", 400);
+  }
+  if (isCommandNeed && (!jdText || jdText.length === 0)) {
+    return send_error(
+      reply,
+      "Please provide a job description after the command",
+      400,
+    );
+  }
+
+  reply.raw.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "Access-Control-Allow-Origin": process.env.UI_APP || "*",
+    "Access-Control-Allow-Credentials": "true",
+  });
+
+  const send = (event: string, data: any) => {
+    reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
   try {
-    const { user_id } = req.user;
-
-    if (!user_id || !ObjectId.isValid(user_id)) {
-      return send_error(reply, "Unauthorized", 401);
-    }
-
-    const { message, resumeId } = req.body as {
-      message: string;
-      resumeId?: string;
-    };
-
-    if (!message || typeof message !== "string" || message.trim().length <= 0) {
-      return send_error(reply, "Please Enter a Message !", 400);
-    }
-
-    const isResumeReworkNeed = message.includes(
-      AI_COMMANDS.COMMANDS.RESUME_REWORK,
-    );
-    const isCoverLetterNeed = message.includes(
-      AI_COMMANDS.COMMANDS.COVER_LETTER,
-    );
-    const isJobMatchNeed = message.includes(AI_COMMANDS.COMMANDS.JOB_MATCH);
-    const isCommandNeed =
-      isCoverLetterNeed || isResumeReworkNeed || isJobMatchNeed;
-
-    if (isCommandNeed && (!resumeId || !ObjectId.isValid(resumeId))) {
-      return send_error(
-        reply,
-        "For using commands, please select a resume",
-        400,
-      );
-    }
-
-    let paragraphs: any[] = [];
-
     const fk_user_id = new ObjectId(user_id);
-
     const db = get_db();
 
+    send("status", { message: "Loading resume..." });
+
+    let paragraphs: any[] = [];
     if (resumeId && ObjectId.isValid(resumeId)) {
       const resumeInCache = await getResumeParagraphs(user_id, resumeId);
-
       if (resumeInCache) {
         paragraphs = resumeInCache;
       } else {
-        const get_resume_para = await db.collection("resumes").findOne(
-          {
-            _id: new ObjectId(resumeId),
-            fk_user_id,
-          },
-          {
-            projection: {
-              extracted_paragraphs: 1,
-            },
-          },
-        );
-
-        if (get_resume_para && get_resume_para?.extracted_paragraphs) {
-          paragraphs = get_resume_para?.extracted_paragraphs ?? [];
-          setCachedResumeParaTexts(user_id, resumeId, paragraphs);
+        const get_resume_para = await db
+          .collection("resumes")
+          .findOne(
+            { _id: new ObjectId(resumeId), fk_user_id },
+            { projection: { extracted_paragraphs: 1 } },
+          );
+        if (get_resume_para?.extracted_paragraphs) {
+          paragraphs = get_resume_para.extracted_paragraphs;
+          await setCachedResumeParaTexts(user_id, resumeId, paragraphs);
         }
       }
     }
 
+    send("status", { message: "Loading profile..." });
+
     let user_details = null;
-
     const isUserIncache = await getUserProfileCache(user_id);
-
     if (isUserIncache) {
+      console.log("IN cahce")
       user_details = isUserIncache;
     } else {
-      const get_user_details = await db.collection("autofills").findOne(
-        {
-          fk_user_id,
-        },
-        {
-          projection: {
-            password: 0,
-            _id: 0,
-            fk_user_id: 0,
-            updated_on: 0,
-          },
-        },
-      );
+      console.log("not in")
+      const get_user_details = await db
+        .collection("autofills")
+        .findOne(
+          { fk_user_id },
+          { projection: { password: 0, _id: 0, fk_user_id: 0, updated_on: 0 } },
+        );
       if (get_user_details) {
         user_details = get_user_details;
-        await setUserProfileCache(user_id , user_details)
+        await setUserProfileCache(user_id, user_details);
       }
     }
 
-    // const result = await genAI.models.generateContent({
-    //   model: "gemini-3.6-flash",
-    //   contents: message,
-    // });
+    let prompt = "";
+    if (commands.length > 0) {
+      send("status", { message: "Running requested tasks..." });
+      prompt = buildBatchPrompt(commands, paragraphs, user_details, jdText);
+    } else {
+      prompt = buildPlainChatPrompt(message, user_details);
+    }
 
-    return send_success(reply, { reply: " result.text" }, 200);
+    const isPlainChat = commands.length === 0;
+    const result = await genAI.models.generateContent({
+      model: "gemini-3.6-flash",
+      contents: prompt,
+      ...(isPlainChat
+        ? {}
+        : { config: { responseMimeType: "application/json" } }),
+    });
+
+    const raw = result.text;
+    if (!raw) {
+      send("error", { message: "AI returned no response" });
+      return reply.raw.end();
+    }
+
+    const parsed = isPlainChat ? { message: raw } : JSON.parse(raw);
+
+    if (parsed.error) {
+      send("error", { message: parsed.error });
+      return reply.raw.end();
+    }
+
+    send("complete", { reply: parsed });
+    reply.raw.end();
   } catch (err) {
     console.log(err);
-    return send_error(reply, "Internal Server Error", 500);
+    send("error", { message: "Internal Server Error" });
+    reply.raw.end();
   }
 }
 

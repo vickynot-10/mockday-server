@@ -16,6 +16,7 @@ import {
   uploadBufferToS3,
 } from "../service/bucketClient";
 import { pdfToDocx } from "../service/pdf_adobe.service";
+import { invalidateAIResumeCache } from "../cache/ai.cache";
 
 export async function ReminderFireWebhook(
   req: FastifyRequest,
@@ -206,31 +207,44 @@ export async function ResumeParserWebhook(
     const db = get_db();
 
     for (const file of filtered) {
+      if (
+        !file ||
+        !file.original_document_id ||
+        !ObjectId.isValid(file.original_document_id) ||
+        !file.fk_user_id ||
+        !ObjectId.isValid(file.fk_user_id)
+      )
+        continue;
       const signedUrl = await getFileSignedUrl(file.key);
       const docxBuffer = await pdfToDocx(signedUrl);
       const docxKey = file.key.replace(/\.pdf$/, ".docx");
 
       const [paragraphs, _] = await Promise.all([
-       
-
         extractParagraphsFromDocx(docxBuffer),
-         uploadBufferToS3(
+        uploadBufferToS3(
           docxKey,
           docxBuffer,
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         ),
       ]);
 
-      await db.collection("resumes").updateOne(
-        { _id: new ObjectId(file.original_document_id) },
-        {
-          $set: {
-            docx_key: docxKey,
-            extracted_paragraphs: paragraphs,
-            updated_on: new Date(),
+      await Promise.all([
+        db.collection("resumes").updateOne(
+          {
+            _id: new ObjectId(file.original_document_id),
+
+            fk_user_id: new ObjectId(file.fk_user_id),
           },
-        },
-      );
+          {
+            $set: {
+              docx_key: docxKey,
+              extracted_paragraphs: paragraphs,
+              updated_on: new Date(),
+            },
+          },
+        ),
+        invalidateAIResumeCache(file.fk_user_id, file.original_document_id),
+      ]);
     }
 
     return send_success(reply, {}, 200);
