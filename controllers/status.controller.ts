@@ -7,6 +7,7 @@ import {
   invalidateResumeCache,
   setCachedDefaultStatus,
 } from "../cache/status.cache";
+import { MAXIMUM_DB_CARDS } from "../constants";
 
 export async function GetStatus(req: FastifyRequest, reply: FastifyReply) {
   try {
@@ -202,6 +203,74 @@ export async function SetDefaultStatus(
     }
 
     return send_success(reply, {}, 200, "Updated Successfully !");
+  } catch (err) {
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
+
+export async function ToggleDashboard(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const { user_id } = req.user;
+
+    if (!user_id || !ObjectId.isValid(user_id)) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const { id, status } = req.body as any;
+
+    if (!id || !ObjectId.isValid(id)) {
+      return send_error(reply, "Invalid Status", 400);
+    }
+
+    if (typeof status !== "boolean") {
+      return send_error(reply, "Invalid Status Value", 400);
+    }
+
+    const db = get_db();
+    const obj_id = new ObjectId(id);
+    const user_obj_id = new ObjectId(user_id);
+
+    if (status === true) {
+      const count = await db.collection("status").countDocuments(
+        {
+          fk_user_id: user_obj_id,
+          show_in_dashboard: true,
+          _id: { $ne: obj_id },
+        },
+        { limit: MAXIMUM_DB_CARDS },
+      );
+
+      if (count >= MAXIMUM_DB_CARDS) {
+        return send_error(
+          reply,
+          `You can only pin up to ${MAXIMUM_DB_CARDS} statuses to the dashboard`,
+          400,
+        );
+      }
+    }
+
+    const update = await db.collection("status").updateOne(
+      { _id: obj_id, fk_user_id: user_obj_id },
+      { $set: { show_in_dashboard: status, updated_on: new Date() } },
+    );
+
+    if (!update || !update.acknowledged) {
+      return send_error(reply, "Internal Server Error", 500);
+    }
+
+    if (update.matchedCount === 0) {
+      return send_error(reply, "Nothing Updated", 404);
+    }
+
+    return send_success(
+      reply,
+      {},
+      200,
+      status === true ? "Pinned to Dashboard" : "Removed from Dashboard",
+    );
   } catch (err) {
     return send_error(reply, "Internal Server Error", 500);
   }
