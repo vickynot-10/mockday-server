@@ -38,6 +38,13 @@ export async function SendMessage(req: FastifyRequest, reply: FastifyReply) {
     return send_error(reply, "Please Enter a Message !", 400);
   }
 
+  const abortController = new AbortController();
+  req.raw.on("close", () => {
+    if (!reply.raw.writableEnded) {
+      abortController.abort();
+    }
+  });
+
   const { commands, content: jdText } = extractCommandsAndContent(message);
   const isCommandNeed = commands.length > 0;
 
@@ -120,10 +127,15 @@ export async function SendMessage(req: FastifyRequest, reply: FastifyReply) {
     const result = await genAI.models.generateContent({
       model: "gemini-3.6-flash",
       contents: prompt,
-      ...(isPlainChat
-        ? {}
-        : { config: { responseMimeType: "application/json" } }),
+      config: {
+        abortSignal: abortController.signal,
+        ...(isPlainChat ? {} : { responseMimeType: "application/json" }),
+      },
     });
+
+    if (abortController.signal.aborted) {
+      return reply.raw.end();
+    }
 
     const raw = result.text;
     if (!raw) {
@@ -139,7 +151,11 @@ export async function SendMessage(req: FastifyRequest, reply: FastifyReply) {
     }
 
     send("complete", { reply: parsed });
+
     let fk_conversation_id: ObjectId;
+    const assistantContent = isPlainChat
+      ? { kind: "text", text: parsed.message }
+      : { kind: "batch", ...parsed };
 
     if (conversation_id && ObjectId.isValid(conversation_id)) {
       fk_conversation_id = new ObjectId(conversation_id);
@@ -149,7 +165,6 @@ export async function SendMessage(req: FastifyRequest, reply: FastifyReply) {
         title: generateTitleFromMessage(message),
         created_on: new Date(),
       });
-
       fk_conversation_id = created.insertedId;
     }
 
@@ -165,13 +180,16 @@ export async function SendMessage(req: FastifyRequest, reply: FastifyReply) {
         fk_conversation_id,
         fk_user_id,
         role: "assistant",
-        content: parsed,
+        content: assistantContent,
         created_on: new Date(),
       },
     ]);
 
     reply.raw.end();
-  } catch (err) {
+  } catch (err: any) {
+    if (err.name === "AbortError") {
+      return;
+    }
     console.log(err);
     send("error", { message: "Internal Server Error" });
     reply.raw.end();
