@@ -30,5 +30,6 @@ export const redis = () => {
   if (!connection) {
     throw new Error("Redis not connected yet");
   }
+
   return connection;
 };

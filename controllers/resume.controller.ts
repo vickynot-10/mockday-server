@@ -4,7 +4,7 @@ import { FastifyReply, FastifyRequest } from "fastify";
 import { ObjectId } from "mongodb";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { deleteFilesFromS3, s3 } from "../service/bucketClient";
+import { s3 } from "../service/bucketClient";
 import {
   getCachedResumes,
   getCachedResumeUrl,
@@ -33,13 +33,32 @@ export async function GetResumes(req: FastifyRequest, reply: FastifyReply) {
       .collection("resumes")
       .find(
         { fk_user_id: new ObjectId(user_id) },
-        { projection: { filename: 1, created_at: 1, default: 1, key: 1 } },
+        {
+          projection: {
+            filename: 1,
+            created_at: 1,
+            default: 1,
+            key: 1,
+            suffix: 1,
+          },
+        },
       )
       .sort({ created_at: -1 })
       .toArray();
 
     const resumes_with_preview = await Promise.all(
       get_resumes.map(async (resume) => {
+        if (resume.suffix !== ".pdf" && resume.suffix !== "pdf") {
+          return {
+            _id: resume._id,
+            filename: resume.filename,
+            created_at: resume.created_at,
+            default: resume.default,
+            preview_url: null,
+            suffix: resume.suffix,
+          };
+        }
+
         const command = new GetObjectCommand({
           Bucket: process.env.B2_BUCKET_NAME!,
           Key: resume.key,
@@ -56,6 +75,7 @@ export async function GetResumes(req: FastifyRequest, reply: FastifyReply) {
           created_at: resume.created_at,
           default: resume.default,
           preview_url,
+          suffix: resume.suffix,
         };
       }),
     );
