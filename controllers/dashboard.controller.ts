@@ -83,6 +83,28 @@ function getDateFilter(type: number) {
   };
 }
 
+function calculateTrend(current, previous) {
+  let percentChange;
+  let direction;
+
+  if (previous === 0) {
+    // avoid divide-by-zero — if you went from 0 to something, treat as new/100%
+    percentChange = current > 0 ? 100 : 0;
+  } else {
+    percentChange = ((current - previous) / previous) * 100;
+  }
+
+  direction = percentChange > 0 ? 'up' : percentChange < 0 ? 'down' : 'flat';
+
+  return {
+    current,
+    previous,
+    percentChange: Math.round(percentChange), // e.g. 12 or -20
+    direction,
+    label: `${percentChange >= 0 ? '+' : ''}${Math.round(percentChange)}% vs last 7 days`
+  };
+}
+
 export async function GetDashboard(req: FastifyRequest, reply: FastifyReply) {
   try {
     const { user_id } = req.user;
@@ -91,57 +113,112 @@ export async function GetDashboard(req: FastifyRequest, reply: FastifyReply) {
       return send_error(reply, "Unauthorized", 401);
     }
 
-    const { date_filter } = req.query as any;
+    const fk_user_id = new ObjectId(user_id);
 
-    const date_number = Number(date_filter ?? 5);
-
-    const { from, to } = getDateFilter(date_number);
+    const now = new Date();
+    const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    const fourteenDaysAgo = new Date(now - 14 * 24 * 60 * 60 * 1000);
 
     const db = get_db();
-    const jobs = await db
+    const result = await db
       .collection("trackers")
       .aggregate([
         {
           $match: {
-            fk_user_id: new ObjectId(user_id),
-            applied_on: {
-              $gte: from,
-              $lt: to,
-            },
+            fk_user_id,
+            applied_on: { $gte: fourteenDaysAgo },
           },
         },
-
         {
-          $group: {
-            _id: {
-              $dateToString: {
-                format: "%Y-%m-%d",
-                date: "$applied_on",
+          $facet: {
+            currentPeriod: [
+              { $match: { applied_on: { $gte: sevenDaysAgo } } },
+              { $count: "count" },
+            ],
+            previousPeriod: [
+              {
+                $match: {
+                  applied_on: { $gte: fourteenDaysAgo, $lt: sevenDaysAgo },
+                },
               },
-            },
-            count: {
-              $sum: 1,
-            },
-          },
-        },
-
-        {
-          $sort: {
-            _id: 1,
-          },
-        },
-
-        {
-          $project: {
-            _id: 0,
-            date: "$_id",
-            count: 1,
+              { $count: "count" },
+            ],
           },
         },
       ])
       .toArray();
-    return send_success(reply, { jobs }, 200);
+
+      const current = result[0].currentPeriod[0]?.count || 0;
+  const previous = result[0].previousPeriod[0]?.count || 0;
+
+  const trend = calculateTrend(current, previous);
+
+    return send_success(reply, { trend }, 200);
   } catch (err) {
+    console.log(err)
     return send_error(reply, "Internal Server Error", 500);
   }
 }
+
+// export async function GetDashboard(req: FastifyRequest, reply: FastifyReply) {
+//   try {
+//     const { user_id } = req.user;
+
+//     if (!user_id || !ObjectId.isValid(user_id)) {
+//       return send_error(reply, "Unauthorized", 401);
+//     }
+
+//     const { date_filter } = req.query as any;
+
+//     const date_number = Number(date_filter ?? 5);
+
+//     const { from, to } = getDateFilter(date_number);
+
+//     const db = get_db();
+//     const jobs = await db
+//       .collection("trackers")
+//       .aggregate([
+//         {
+//           $match: {
+//             fk_user_id: new ObjectId(user_id),
+//             applied_on: {
+//               $gte: from,
+//               $lt: to,
+//             },
+//           },
+//         },
+
+//         {
+//           $group: {
+//             _id: {
+//               $dateToString: {
+//                 format: "%Y-%m-%d",
+//                 date: "$applied_on",
+//               },
+//             },
+//             count: {
+//               $sum: 1,
+//             },
+//           },
+//         },
+
+//         {
+//           $sort: {
+//             _id: 1,
+//           },
+//         },
+
+//         {
+//           $project: {
+//             _id: 0,
+//             date: "$_id",
+//             count: 1,
+//           },
+//         },
+//       ])
+//       .toArray();
+//     return send_success(reply, { jobs }, 200);
+//   } catch (err) {
+//     return send_error(reply, "Internal Server Error", 500);
+//   }
+// }
