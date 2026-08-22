@@ -2,108 +2,7 @@ import { send_success, send_error } from "../utils/response";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { ObjectId } from "mongodb";
 import { get_db } from "../config/mongodb";
-
-function getDateFilter(type: number) {
-  const now = new Date();
-
-  // Start of today
-  const startOfToday = new Date(now);
-  startOfToday.setHours(0, 0, 0, 0);
-
-  // Start of tomorrow
-  const startOfTomorrow = new Date(startOfToday);
-  startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
-
-  if (type === 1) {
-    // Today
-    return {
-      from: startOfToday,
-      to: startOfTomorrow,
-    };
-  }
-
-  if (type === 2) {
-    // Yesterday
-    const from = new Date(startOfToday);
-    from.setDate(from.getDate() - 1);
-
-    return {
-      from,
-      to: startOfToday,
-    };
-  }
-
-  if (type === 3) {
-    // Last 3 days including today
-    const from = new Date(startOfToday);
-    from.setDate(from.getDate() - 2);
-
-    return {
-      from,
-      to: startOfTomorrow,
-    };
-  }
-
-  if (type === 4) {
-    // Last 7 days including today
-    const from = new Date(startOfToday);
-    from.setDate(from.getDate() - 6);
-
-    return {
-      from,
-      to: startOfTomorrow,
-    };
-  }
-
-  if (type === 5) {
-    // This month
-    const from = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    return {
-      from,
-      to: startOfTomorrow,
-    };
-  }
-
-  if (type === 6) {
-    // Last month
-    const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-
-    const to = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    return {
-      from,
-      to,
-    };
-  }
-
-  return {
-    from: startOfToday,
-    to: startOfTomorrow,
-  };
-}
-
-function calculateTrend(current, previous) {
-  let percentChange;
-  let direction;
-
-  if (previous === 0) {
-    // avoid divide-by-zero — if you went from 0 to something, treat as new/100%
-    percentChange = current > 0 ? 100 : 0;
-  } else {
-    percentChange = ((current - previous) / previous) * 100;
-  }
-
-  direction = percentChange > 0 ? 'up' : percentChange < 0 ? 'down' : 'flat';
-
-  return {
-    current,
-    previous,
-    percentChange: Math.round(percentChange), // e.g. 12 or -20
-    direction,
-    label: `${percentChange >= 0 ? '+' : ''}${Math.round(percentChange)}% vs last 7 days`
-  };
-}
+import { MAXIMUM_DB_CARDS } from "../constants";
 
 export async function GetDashboard(req: FastifyRequest, reply: FastifyReply) {
   try {
@@ -114,111 +13,374 @@ export async function GetDashboard(req: FastifyRequest, reply: FastifyReply) {
     }
 
     const fk_user_id = new ObjectId(user_id);
+    const db = get_db();
 
     const now = new Date();
-    const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
-    const fourteenDaysAgo = new Date(now - 14 * 24 * 60 * 60 * 1000);
 
+    const startOfThisWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const startOfLastWeek = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+
+    const [upcoming_reminders, status, trackers_trends] = await Promise.all([
+      db
+        .collection("reminders")
+        .aggregate([
+          {
+            $match: {
+              fk_user_id,
+              reminder_at: { $gte: now },
+            },
+          },
+          {
+            $sort: {
+              reminder_at: 1,
+            },
+          },
+          {
+            $limit: 5,
+          },
+          {
+            $lookup: {
+              from: "trackers",
+              localField: "fk_tracker_id",
+              foreignField: "_id",
+              pipeline: [
+                {
+                  $match: {
+                    fk_user_id,
+                  },
+                },
+                {
+                  $lookup: {
+                    from: "status",
+                    localField: "status",
+                    foreignField: "_id",
+                    as: "status",
+                  },
+                },
+                {
+                  $unwind: {
+                    path: "$status",
+                    preserveNullAndEmptyArrays: true,
+                  },
+                },
+              ],
+              as: "result",
+            },
+          },
+          {
+            $unwind: {
+              path: "$result",
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+          {
+            $project: {
+              reminder_at: 1,
+              note: 1,
+              company: "$result.company",
+              company_notes: "$result.notes",
+              company_url: "$result.url",
+              company_img: "$result.image",
+              applied_on: "$result.applied_on",
+              title: "$result.title",
+              page_title: "$result.page_title",
+
+              status_name: "$result.status.name",
+              status_color: "$result.status.color",
+            },
+          },
+        ])
+        .toArray(),
+
+      db
+        .collection("trackers")
+        .aggregate([
+          {
+            $match: {
+              fk_user_id,
+            },
+          },
+          {
+            $facet: {
+              totals: [{ $count: "count" }],
+              status_breakdown: [
+                {
+                  $group: {
+                    _id: "$status",
+                    count: {
+                      $sum: 1,
+                    },
+                  },
+                },
+                {
+                  $lookup: {
+                    from: "status",
+                    localField: "_id",
+                    foreignField: "_id",
+                    pipeline: [
+                      {
+                        $match: {
+                          fk_user_id,
+                        },
+                      },
+                    ],
+                    as: "result",
+                  },
+                },
+                {
+                  $unwind: {
+                    path: "$result",
+                    preserveNullAndEmptyArrays: false,
+                  },
+                },
+                {
+                  $project: {
+                    count: 1,
+                    _id: 1,
+                    status_name: "$result.name",
+                    status_color: "$result.color",
+                  },
+                },
+              ],
+            },
+          },
+        ])
+        .next(),
+
+      db
+        .collection("status")
+        .aggregate([
+          {
+            $match: {
+              fk_user_id,
+              show_in_dashboard: true,
+            },
+          },
+          {
+            $limit: MAXIMUM_DB_CARDS,
+          },
+          {
+            $lookup: {
+              from: "trackers",
+              localField: "_id",
+              foreignField: "status",
+              pipeline: [
+                { $match: { fk_user_id } },
+                {
+                  $facet: {
+                    totals: [{ $count: "count" }],
+                    thisWeek: [
+                      { $match: { applied_on: { $gte: startOfThisWeek } } },
+                      { $count: "count" },
+                    ],
+                    lastWeek: [
+                      {
+                        $match: {
+                          applied_on: {
+                            $gte: startOfLastWeek,
+                            $lt: startOfThisWeek,
+                          },
+                        },
+                      },
+                      { $count: "count" },
+                    ],
+                  },
+                },
+                {
+                  $project: {
+                    total: {
+                      $ifNull: [{ $arrayElemAt: ["$totals.count", 0] }, 0],
+                    },
+                    thisWeek: {
+                      $ifNull: [{ $arrayElemAt: ["$thisWeek.count", 0] }, 0],
+                    },
+                    lastWeek: {
+                      $ifNull: [{ $arrayElemAt: ["$lastWeek.count", 0] }, 0],
+                    },
+                  },
+                },
+              ],
+              as: "result",
+            },
+          },
+          {
+            $unwind: {
+              path: "$result",
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+          {
+            $project: {
+              _id: 1,
+              status_name: "$name",
+              status_color: "$color",
+              total: { $ifNull: ["$result.total", 0] },
+              thisWeek: { $ifNull: ["$result.thisWeek", 0] },
+              lastWeek: { $ifNull: ["$result.lastWeek", 0] },
+            },
+          },
+        ])
+        .toArray(),
+    ]);
+
+    const status_breakdown = status?.status_breakdown ?? [];
+    const total_applications = status?.totals?.[0]?.count ?? 0;
+
+    return send_success(
+      reply,
+      {
+        total_applications,
+        upcoming_reminders,
+        status: status_breakdown,
+        trackers_trends,
+      },
+      200,
+    );
+  } catch  {
+    return send_error(reply, "Internal Server Error", 500);
+  }
+}
+
+export async function GetBarChartData(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const { user_id } = req.user;
+
+    if (!user_id || !ObjectId.isValid(user_id)) {
+      return send_error(reply, "Unauthorized", 401);
+    }
+
+    const fk_user_id = new ObjectId(user_id);
     const db = get_db();
-    const result = await db
+
+    const { type } = req.query as { type?: string };
+
+    const num_type = Number(type ?? 1);
+
+    const now = new Date();
+
+    let from_date: Date;
+    let groupFormat: string;
+
+    switch (num_type) {
+      // Today → group by hour
+      case 1:
+        from_date = new Date(now);
+        from_date.setHours(0, 0, 0, 0);
+
+        groupFormat = "%Y-%m-%d %H:00";
+        break;
+
+      // Last 7 days → group by day
+      case 2:
+        from_date = new Date(now);
+        from_date.setDate(from_date.getDate() - 6);
+
+        groupFormat = "%Y-%m-%d";
+        break;
+
+      // Last 15 days → group by day
+      case 3:
+        from_date = new Date(now);
+        from_date.setDate(from_date.getDate() - 14);
+
+        groupFormat = "%Y-%m-%d";
+        break;
+
+      // Last 30 days → group by day
+      case 4:
+        from_date = new Date(now);
+        from_date.setDate(from_date.getDate() - 29);
+
+        groupFormat = "%Y-%m-%d";
+        break;
+
+      // Last 6 months → group by month
+      case 5:
+        from_date = new Date(now);
+        from_date.setMonth(from_date.getMonth() - 5);
+        from_date.setDate(1);
+
+        groupFormat = "%Y-%m";
+        break;
+
+      // Last 1 year → group by month
+      case 6:
+        from_date = new Date(now);
+        from_date.setMonth(from_date.getMonth() - 11);
+        from_date.setDate(1);
+
+        groupFormat = "%Y-%m";
+        break;
+
+      // Default → Today
+      default:
+        from_date = new Date(now);
+        from_date.setHours(0, 0, 0, 0);
+
+        groupFormat = "%Y-%m-%d %H:00";
+        break;
+    }
+
+    // Start of today
+    from_date.setHours(0, 0, 0, 0);
+
+    const data = await db
       .collection("trackers")
       .aggregate([
         {
           $match: {
             fk_user_id,
-            applied_on: { $gte: fourteenDaysAgo },
+            applied_on: {
+              $gte: from_date,
+              $lte: now,
+            },
           },
         },
+
         {
-          $facet: {
-            currentPeriod: [
-              { $match: { applied_on: { $gte: sevenDaysAgo } } },
-              { $count: "count" },
-            ],
-            previousPeriod: [
-              {
-                $match: {
-                  applied_on: { $gte: fourteenDaysAgo, $lt: sevenDaysAgo },
-                },
+          $group: {
+            _id: {
+              $dateToString: {
+                format: groupFormat,
+                date: "$applied_on",
               },
-              { $count: "count" },
-            ],
+            },
+            count: {
+              $sum: 1,
+            },
+          },
+        },
+
+        {
+          $sort: {
+            _id: 1,
+          },
+        },
+
+        {
+          $project: {
+            _id: 0,
+            date: "$_id",
+            count: 1,
           },
         },
       ])
       .toArray();
 
-      const current = result[0].currentPeriod[0]?.count || 0;
-  const previous = result[0].previousPeriod[0]?.count || 0;
-
-  const trend = calculateTrend(current, previous);
-
-    return send_success(reply, { trend }, 200);
-  } catch (err) {
-    console.log(err)
+    return send_success(
+      reply,
+      {
+        type: num_type,
+        from_date,
+        end_date: now,
+        data,
+      },
+      200,
+    );
+  } catch  {
     return send_error(reply, "Internal Server Error", 500);
   }
 }
-
-// export async function GetDashboard(req: FastifyRequest, reply: FastifyReply) {
-//   try {
-//     const { user_id } = req.user;
-
-//     if (!user_id || !ObjectId.isValid(user_id)) {
-//       return send_error(reply, "Unauthorized", 401);
-//     }
-
-//     const { date_filter } = req.query as any;
-
-//     const date_number = Number(date_filter ?? 5);
-
-//     const { from, to } = getDateFilter(date_number);
-
-//     const db = get_db();
-//     const jobs = await db
-//       .collection("trackers")
-//       .aggregate([
-//         {
-//           $match: {
-//             fk_user_id: new ObjectId(user_id),
-//             applied_on: {
-//               $gte: from,
-//               $lt: to,
-//             },
-//           },
-//         },
-
-//         {
-//           $group: {
-//             _id: {
-//               $dateToString: {
-//                 format: "%Y-%m-%d",
-//                 date: "$applied_on",
-//               },
-//             },
-//             count: {
-//               $sum: 1,
-//             },
-//           },
-//         },
-
-//         {
-//           $sort: {
-//             _id: 1,
-//           },
-//         },
-
-//         {
-//           $project: {
-//             _id: 0,
-//             date: "$_id",
-//             count: 1,
-//           },
-//         },
-//       ])
-//       .toArray();
-//     return send_success(reply, { jobs }, 200);
-//   } catch (err) {
-//     return send_error(reply, "Internal Server Error", 500);
-//   }
-// }

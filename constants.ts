@@ -1,5 +1,5 @@
 export const MAXIMUM_RESUME_UPLOADS = 6;
-export const MAXIMUM_DB_CARDS = 4;
+export const MAXIMUM_DB_CARDS = 3;
 export const WEBHOOK_CONSTANTS = {
   NOTIFICATION_TYPE: {
     SUCCESS: 1,

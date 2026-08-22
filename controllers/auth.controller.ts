@@ -15,6 +15,15 @@ const SetCookie = (reply: FastifyReply, token: string) => {
   });
 };
 
+const default_statuses = [
+  "Applied",
+  "Interviewing",
+  "Offer",
+  "Rejected",
+  "Ghosted",
+];
+const default_colors = ["#3B82F6", "#F59E0B", "#22C55E", "#EF4444", "#6B7280"];
+
 export async function SignUp(req: FastifyRequest, reply: FastifyReply) {
   try {
     const result = SignUpSchema.safeParse(req.body);
@@ -46,6 +55,18 @@ export async function SignUp(req: FastifyRequest, reply: FastifyReply) {
     if (!insert_data?.acknowledged) {
       return send_error(reply, "Failed to create, try again", 400);
     }
+
+    await db.collection("status").insertMany(
+      default_statuses.map((name, i) => ({
+        name,
+        color: default_colors[i],
+        fk_user_id: insert_data.insertedId,
+        default: true,
+        show_in_dashboard: true,
+        created_on: new Date(),
+        updated_on: new Date(),
+      })),
+    );
 
     const token = generateToken({
       user_id: insert_data.insertedId,
@@ -114,5 +135,3 @@ export async function SignOut(req: FastifyRequest, reply: FastifyReply) {
 
   return send_success(reply, {}, 200, "Logged out successfully");
 }
-
-
